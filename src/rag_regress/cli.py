@@ -18,6 +18,7 @@ from pydantic import ValidationError
 from .compare import DEFAULT_TOLERANCE, compare_runs, format_summary
 from .golden import GoldenSetError, load_golden_set
 from .metrics import DEFAULT_KS
+from .report import render_json, render_markdown
 from .runner import (
     PipelineLoadError,
     RunResult,
@@ -103,6 +104,12 @@ def compare(
             help="If nothing regressed, copy the candidate over the baseline."
         ),
     ] = False,
+    report_md: Annotated[
+        Path | None, typer.Option(help="Also write a Markdown report (PR comment).")
+    ] = None,
+    report_json: Annotated[
+        Path | None, typer.Option(help="Also write the comparison as JSON.")
+    ] = None,
 ) -> None:
     """Fail (exit 1) if CANDIDATE is worse than BASELINE beyond tolerance."""
     try:
@@ -119,6 +126,10 @@ def compare(
         raise typer.Exit(2) from None
 
     typer.echo(format_summary(result))
+    for path, render in ((report_md, render_markdown), (report_json, render_json)):
+        if path is not None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(render(result), encoding="utf-8")
     if not result.passed:
         if update_baseline:
             typer.echo("baseline not updated: the candidate regressed")

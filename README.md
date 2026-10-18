@@ -58,6 +58,8 @@ FAIL: quality regressed
 | `--metric hit@5` | Gate only these metrics (default: every metric in both runs) |
 | `--update-baseline` | Overwrite the baseline with the candidate, but only if nothing regressed |
 
+Add `--report-md report.md` to get a short Markdown report for a pull request comment: the verdict, a metric table with regressions on top, and the questions that changed. `--report-json report.json` writes the same comparison for other tools.
+
 Exit codes: `0` pass, `1` regression, `2` bad input. A warning is printed when the golden set changed between the two runs.
 
 ## Golden set format
