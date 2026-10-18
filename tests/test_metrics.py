@@ -5,6 +5,7 @@ import pytest
 from rag_regress.metrics import (
     dedupe,
     exact_match,
+    metric_sort_key,
     ndcg_at_k,
     normalise_answer,
     question_metrics,
@@ -77,6 +78,30 @@ def test_token_f1() -> None:
     assert token_f1("", "") == 1.0
     assert token_f1("x", "") == 0.0
     assert token_f1("a b", "c d") == 0.0
+
+
+def test_metric_names_sort_numerically() -> None:
+    names = ["hit@10", "token_f1", "hit@3", "exact_match", "hit@1", "mrr@10"]
+
+    assert sorted(names, key=metric_sort_key) == [
+        "exact_match",
+        "hit@1",
+        "hit@3",
+        "hit@10",
+        "mrr@10",
+        "token_f1",
+    ]
+
+
+def test_run_aggregates_are_in_numeric_order() -> None:
+    from rag_regress.golden import GoldenItem
+    from rag_regress.runner import run_pipeline
+
+    item = GoldenItem(id="q", query="q", relevant_ids=("a",))
+    run = run_pipeline([item], lambda q: ["a"], ks=[10, 3])
+
+    hits = [name for name in run.aggregates if name.startswith("hit@")]
+    assert hits == ["hit@3", "hit@10"]
 
 
 @pytest.mark.parametrize(("ids", "ks"), [(["a"], []), (["a"], [0]), ([], [1])])

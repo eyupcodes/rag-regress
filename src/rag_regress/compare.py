@@ -15,6 +15,7 @@ from collections.abc import Iterable, Mapping
 
 from pydantic import BaseModel
 
+from .metrics import metric_sort_key
 from .runner import RunResult
 
 DEFAULT_TOLERANCE = 0.02
@@ -57,7 +58,9 @@ def compare_runs(
         raise ValueError("tolerances must not be negative")
     tolerances = dict(tolerances or {})
 
-    shared = sorted(set(baseline.aggregates) & set(candidate.aggregates))
+    shared = sorted(
+        set(baseline.aggregates) & set(candidate.aggregates), key=metric_sort_key
+    )
     names = shared if gate is None else list(dict.fromkeys(gate))
     missing = [n for n in names if n not in shared]
     if missing:

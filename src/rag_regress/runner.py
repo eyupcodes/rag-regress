@@ -25,7 +25,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from .golden import GoldenItem
-from .metrics import DEFAULT_KS, question_metrics
+from .metrics import DEFAULT_KS, metric_sort_key, question_metrics
 
 Pipeline = Callable[[str], Any]
 
@@ -152,7 +152,7 @@ def run_pipeline(
             )
         )
 
-    names = sorted({name for r in results for name in r.metrics})
+    names = sorted({name for r in results for name in r.metrics}, key=metric_sort_key)
     aggregates = {
         name: statistics.fmean(r.metrics[name] for r in results if name in r.metrics)
         for name in names
