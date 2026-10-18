@@ -62,6 +62,36 @@ Add `--report-md report.md` to get a short Markdown report for a pull request co
 
 Exit codes: `0` pass, `1` regression, `2` bad input. A warning is printed when the golden set changed between the two runs.
 
+## GitHub Action
+
+```yaml
+on: pull_request
+
+permissions:
+  contents: read
+  pull-requests: write   # for the report comment
+
+jobs:
+  rag-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install -e .          # your project, so the pipeline imports
+      - uses: eyupcodes/rag-regress@main
+        with:
+          golden: eval/golden.jsonl
+          pipeline: myapp.rag:answer
+          baseline: eval/baseline.json
+          compare-args: --metric hit@5 --metric recall@5 --tolerance 0.03
+```
+
+The action runs the golden set and compares the result with the committed baseline. It writes the report to the job summary and keeps a single comment on the pull request up to date, and it fails the job when quality drops. Set `comment: "false"` to skip the comment. Outputs: `passed` and `report`. This repository runs the action on its own example in CI, once on the healthy pipeline (it must pass) and once on a broken one (it must fail).
+
+To accept a change in quality deliberately, regenerate the baseline locally with `rag-regress run ... --out eval/baseline.json` and commit it, so the change is visible in review.
+
 ## Golden set format
 
 One JSON object per line:
