@@ -10,3 +10,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Golden set loader for JSONL files with per-line validation (#1).
+- Deterministic metrics: hit, recall, precision, MRR and nDCG at k, exact match and token F1 (#2).
