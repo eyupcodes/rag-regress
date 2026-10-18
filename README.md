@@ -35,6 +35,31 @@ rag-regress run --golden examples/golden.jsonl     --pipeline examples.toy_rag:s
 
 If a question raises or returns something else, the error is recorded for that question and it scores as an empty retrieval. A crash counts as a regression; it does not abort the run. The run file holds per-question ids, answers, latency, errors and metrics, plus the averages and p50/p95 latency.
 
+## Gate a change in CI
+
+Commit a baseline once, then compare every change against it:
+
+```bash
+rag-regress run --golden examples/golden.jsonl     --pipeline examples.toy_rag:search_without_bm25 --out runs/candidate.json
+rag-regress compare --baseline baseline.json --candidate runs/candidate.json     --metric hit@5 --metric recall@5
+```
+
+```
+FAIL: quality regressed
+  hit@5: 1.000 -> 0.750 (-0.250, tolerance 0.020)
+  recall@5: 1.000 -> 0.750 (-0.250, tolerance 0.020)
+  newly failing (hit@10): q2
+```
+
+| Option | Meaning |
+|---|---|
+| `--tolerance 0.02` | Allowed absolute drop for every metric |
+| `--tolerance-for recall@5=0.05` | Per-metric override, repeatable |
+| `--metric hit@5` | Gate only these metrics (default: every metric in both runs) |
+| `--update-baseline` | Overwrite the baseline with the candidate, but only if nothing regressed |
+
+Exit codes: `0` pass, `1` regression, `2` bad input. A warning is printed when the golden set changed between the two runs.
+
 ## Golden set format
 
 One JSON object per line:
