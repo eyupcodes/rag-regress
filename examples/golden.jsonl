@@ -1,0 +1,4 @@
+{"id": "q1", "query": "What does retrieval-augmented generation do?", "relevant_ids": ["rag"], "tags": ["concepts"]}
+{"id": "q2", "query": "How does BM25 rank documents?", "relevant_ids": ["bm25"], "tags": ["retrieval"]}
+{"id": "q3", "query": "Why split long documents into passages?", "relevant_ids": ["chunking"], "tags": ["retrieval"]}
+{"id": "q4", "query": "What is the capital of Türkiye?", "relevant_ids": ["ankara"], "reference_answer": "Ankara is the capital of Türkiye.", "tags": ["facts"]}
