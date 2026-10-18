@@ -11,6 +11,7 @@ from rag_regress.golden import GoldenItem
 from rag_regress.runner import (
     PipelineLoadError,
     RunResult,
+    file_sha256,
     load_pipeline,
     run_pipeline,
 )
@@ -164,3 +165,13 @@ def test_cli_run_reports_setup_errors(
 
     assert result.exit_code == 2
     assert "error:" in result.output
+
+
+def test_golden_fingerprint_ignores_line_endings(tmp_path: Path) -> None:
+    unix, windows = tmp_path / "u.jsonl", tmp_path / "w.jsonl"
+    unix.write_bytes(b'{"a": 1}\n{"b": 2}\n')
+    windows.write_bytes(b'{"a": 1}\r\n{"b": 2}\r\n')
+
+    assert file_sha256(unix) == file_sha256(windows)
+    windows.write_bytes(b'{"a": 1}\r\n{"b": 3}\r\n')
+    assert file_sha256(unix) != file_sha256(windows)
