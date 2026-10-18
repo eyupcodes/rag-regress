@@ -16,6 +16,25 @@ It is meant for the change you are about to merge, such as a new chunk size, emb
 
 RAG quality degrades quietly. A chunking tweak that helps one query type can drop recall on another, and nobody notices until users do. Unit tests cannot see this, and full benchmarks are too slow and noisy to run on every pull request. A small, deterministic golden set checked on every PR is the missing middle.
 
+## Quickstart
+
+```bash
+pip install -e .
+rag-regress run --golden examples/golden.jsonl     --pipeline examples.toy_rag:search --out runs/candidate.json
+```
+
+```
+4 questions, 0 errors. hit@5=1.000, recall@5=1.000, mrr@10=1.000, token_f1=1.000
+```
+
+`--pipeline` takes any callable as `package.module:function`, resolved from the current directory. It is called with each query and may return:
+
+- a list of document ids: `["doc-3", "doc-7"]`
+- a mapping: `{"retrieved_ids": [...], "answer": "..."}`
+- an object with `retrieved_ids` and, optionally, `answer` attributes
+
+If a question raises or returns something else, the error is recorded for that question and it scores as an empty retrieval. A crash counts as a regression; it does not abort the run. The run file holds per-question ids, answers, latency, errors and metrics, plus the averages and p50/p95 latency.
+
 ## Golden set format
 
 One JSON object per line:
