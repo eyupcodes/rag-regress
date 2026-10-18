@@ -16,6 +16,24 @@ It is meant for the change you are about to merge, such as a new chunk size, emb
 
 RAG quality degrades quietly. A chunking tweak that helps one query type can drop recall on another, and nobody notices until users do. Unit tests cannot see this, and full benchmarks are too slow and noisy to run on every pull request. A small, deterministic golden set checked on every PR is the missing middle.
 
+## Golden set format
+
+One JSON object per line:
+
+```json
+{"id": "q1", "query": "What does RAG stand for?", "relevant_ids": ["doc-12"], "reference_answer": "Retrieval-augmented generation", "tags": ["basics"]}
+```
+
+| Field | Required | Meaning |
+|---|---|---|
+| `id` | yes | Unique question id |
+| `query` | yes | The question sent to your pipeline |
+| `relevant_ids` | yes | Documents that should be retrieved (at least one) |
+| `reference_answer` | no | Enables answer metrics |
+| `tags` | no | For slicing results, e.g. by topic |
+
+A malformed file fails with the file name and line number, so you fix the data before measuring anything.
+
 ## Design principles
 
 - **Deterministic first.** Retrieval metrics and lexical answer metrics need no API key and give the same number on every run. LLM judges are optional and come later.
