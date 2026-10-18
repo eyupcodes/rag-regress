@@ -34,6 +34,21 @@ One JSON object per line:
 
 A malformed file fails with the file name and line number, so you fix the data before measuring anything.
 
+## Metrics
+
+For every question and every cut-off `k` (default 1, 3, 5, 10):
+
+| Metric | Meaning |
+|---|---|
+| `hit@k` | At least one relevant document in the top k |
+| `recall@k` | Share of the relevant documents found in the top k |
+| `precision@k` | Relevant documents in the top k, divided by k |
+| `mrr@k` | 1 / rank of the first relevant document (0 if none in the top k) |
+| `ndcg@k` | Rank-aware score with binary relevance |
+| `exact_match`, `token_f1` | Only when the item has a `reference_answer` |
+
+A document returned twice counts once, at its first position. Answers are compared after Unicode case folding and punctuation removal; articles are not stripped, so the rules are the same in every language.
+
 ## Design principles
 
 - **Deterministic first.** Retrieval metrics and lexical answer metrics need no API key and give the same number on every run. LLM judges are optional and come later.
