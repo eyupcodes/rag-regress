@@ -1,16 +1,30 @@
-"""Command line: ``rag-regress run`` measures a pipeline on a golden set."""
+"""Command line.
+
+``rag-regress run`` measures a pipeline on a golden set; ``rag-regress compare``
+gates a candidate run against a baseline. Exit codes: 0 pass, 1 regression,
+2 usage or input error.
+"""
 
 from __future__ import annotations
 
+import shutil
 import sys
 from pathlib import Path
 from typing import Annotated
 
 import typer
+from pydantic import ValidationError
 
+from .compare import DEFAULT_TOLERANCE, compare_runs, format_summary
 from .golden import GoldenSetError, load_golden_set
 from .metrics import DEFAULT_KS
-from .runner import PipelineLoadError, file_sha256, load_pipeline, run_pipeline
+from .runner import (
+    PipelineLoadError,
+    RunResult,
+    file_sha256,
+    load_pipeline,
+    run_pipeline,
+)
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
 
@@ -53,3 +67,62 @@ def run(
     summary = ", ".join(f"{m}={result.aggregates[m]:.3f}" for m in headline)
     typer.echo(f"{len(result.questions)} questions, {result.errors} errors. {summary}")
     typer.echo(f"wrote {out}")
+
+
+def _parse_overrides(values: list[str]) -> dict[str, float]:
+    overrides = {}
+    for value in values:
+        name, sep, number = value.partition("=")
+        try:
+            overrides[name] = float(number)
+        except ValueError:
+            sep = ""
+        if not sep or not name:
+            raise typer.BadParameter(f"{value!r}: expected METRIC=VALUE")
+    return overrides
+
+
+@app.command()
+def compare(
+    baseline: Annotated[Path, typer.Option(help="Baseline run (JSON).")],
+    candidate: Annotated[Path, typer.Option(help="Candidate run (JSON).")],
+    tolerance: Annotated[
+        float, typer.Option(help="Allowed drop for every metric (absolute).")
+    ] = DEFAULT_TOLERANCE,
+    tolerance_for: Annotated[
+        list[str] | None,
+        typer.Option(help="Per-metric override, e.g. recall@5=0.05; repeatable."),
+    ] = None,
+    metric: Annotated[
+        list[str] | None,
+        typer.Option(help="Gate only these metrics; repeatable. Default: all."),
+    ] = None,
+    update_baseline: Annotated[
+        bool,
+        typer.Option(
+            help="If nothing regressed, copy the candidate over the baseline."
+        ),
+    ] = False,
+) -> None:
+    """Fail (exit 1) if CANDIDATE is worse than BASELINE beyond tolerance."""
+    try:
+        base, cand = RunResult.load(baseline), RunResult.load(candidate)
+        result = compare_runs(
+            base,
+            cand,
+            tolerance=tolerance,
+            tolerances=_parse_overrides(tolerance_for or []),
+            gate=metric,
+        )
+    except (OSError, ValidationError, ValueError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from None
+
+    typer.echo(format_summary(result))
+    if not result.passed:
+        if update_baseline:
+            typer.echo("baseline not updated: the candidate regressed")
+        raise typer.Exit(1)
+    if update_baseline:
+        shutil.copyfile(candidate, baseline)
+        typer.echo(f"updated {baseline}")
