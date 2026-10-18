@@ -107,7 +107,10 @@ def _percentile(values: list[float], q: float) -> float:
 
 
 def file_sha256(path: str | Path) -> str:
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    """Fingerprint of a text file that ignores CRLF vs LF, so a Windows
+    checkout and a Linux CI runner agree on the same golden set."""
+    data = Path(path).read_bytes().replace(b"\r\n", b"\n")
+    return hashlib.sha256(data).hexdigest()
 
 
 def run_pipeline(

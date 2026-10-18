@@ -1,0 +1,99 @@
+name: rag-regress
+description: Run a golden set through your RAG pipeline, compare with a baseline and fail the job on quality regressions.
+author: eyupcodes
+branding:
+  icon: shield
+  color: green
+
+inputs:
+  golden:
+    description: Path to the golden set (JSONL).
+    required: true
+  pipeline:
+    description: Callable to test, as 'package.module:function', resolved from working-directory.
+    required: true
+  baseline:
+    description: Path to the committed baseline run (JSON).
+    required: true
+  working-directory:
+    description: Directory to run in (your project root).
+    default: "."
+  compare-args:
+    description: Extra arguments for 'rag-regress compare', e.g. "--metric hit@5 --tolerance 0.05".
+    default: ""
+  comment:
+    description: Post or update one pull request comment with the report (needs pull-requests write).
+    default: "true"
+  github-token:
+    description: Token used to comment.
+    default: ${{ github.token }}
+
+outputs:
+  passed:
+    description: "'true' if no gated metric regressed."
+    value: ${{ steps.compare.outputs.passed }}
+  report:
+    description: Path to the Markdown report.
+    value: ${{ steps.compare.outputs.report }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install rag-regress
+      shell: bash
+      run: python -m pip install --disable-pip-version-check --quiet "$GITHUB_ACTION_PATH"
+
+    - name: Run the golden set
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GOLDEN: ${{ inputs.golden }}
+        PIPELINE: ${{ inputs.pipeline }}
+      run: rag-regress run --golden "$GOLDEN" --pipeline "$PIPELINE" --out "$RUNNER_TEMP/rag-regress-candidate.json"
+
+    - name: Compare with the baseline
+      id: compare
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        BASELINE: ${{ inputs.baseline }}
+        COMPARE_ARGS: ${{ inputs.compare-args }}
+      run: |
+        report="$RUNNER_TEMP/rag-regress-report.md"
+        set +e
+        # COMPARE_ARGS is split on spaces on purpose: it holds several options.
+        # shellcheck disable=SC2086
+        rag-regress compare --baseline "$BASELINE" \
+          --candidate "$RUNNER_TEMP/rag-regress-candidate.json" \
+          --report-md "$report" $COMPARE_ARGS
+        status=$?
+        set -e
+        if [ "$status" -ge 2 ]; then exit "$status"; fi
+        cat "$report" >> "$GITHUB_STEP_SUMMARY"
+        echo "report=$report" >> "$GITHUB_OUTPUT"
+        if [ "$status" -eq 0 ]; then echo "passed=true"; else echo "passed=false"; fi >> "$GITHUB_OUTPUT"
+
+    - name: Comment on the pull request
+      if: inputs.comment == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPO: ${{ github.repository }}
+        PR: ${{ github.event.pull_request.number }}
+        REPORT: ${{ steps.compare.outputs.report }}
+      run: |
+        marker='<!-- rag-regress-report -->'
+        existing=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+          --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -n 1)
+        if [ -n "$existing" ]; then
+          gh api --method PATCH "repos/$REPO/issues/comments/$existing" -F "body=@$REPORT" > /dev/null
+        else
+          gh api --method POST "repos/$REPO/issues/$PR/comments" -F "body=@$REPORT" > /dev/null
+        fi
+
+    - name: Fail on regression
+      if: steps.compare.outputs.passed != 'true'
+      shell: bash
+      run: |
+        echo "::error title=rag-regress::Quality regressed; see the job summary."
+        exit 1
