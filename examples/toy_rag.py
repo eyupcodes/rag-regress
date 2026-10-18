@@ -24,3 +24,10 @@ def search(query: str) -> dict:
     ranked = sorted(CORPUS, key=lambda doc_id: -len(q & _words(CORPUS[doc_id])))
     top = ranked[:3]
     return {"retrieved_ids": top, "answer": CORPUS[top[0]]}
+
+
+def search_without_bm25(query: str) -> dict:
+    """The same retriever after a 'refactor' that dropped one document."""
+    result = search(query)
+    result["retrieved_ids"] = [d for d in result["retrieved_ids"] if d != "bm25"]
+    return result
