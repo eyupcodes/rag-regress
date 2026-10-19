@@ -7,10 +7,19 @@ both runs is gated unless the caller names a subset.
 Averages can hide a question that went from right to wrong while another went
 the other way, so the comparison also lists per-question changes, judged by
 ``hit@K`` at the largest cut-off both runs share.
+
+Runs made with ``--repeats`` carry one mean per repeat. The allowed drop then
+widens to ``NOISE_Z`` combined standard errors of the two means when that is
+larger than the tolerance, so run-to-run noise in a nondeterministic pipeline
+is not reported as a regression, while a drop well beyond it still is.
+Questions whose hit rate is strictly between 0 and 1 in the candidate are
+listed as flaky.
 """
 
 from __future__ import annotations
 
+import math
+import statistics
 from collections.abc import Iterable, Mapping
 
 from pydantic import BaseModel
@@ -19,6 +28,7 @@ from .metrics import metric_sort_key
 from .runner import RunResult
 
 DEFAULT_TOLERANCE = 0.02
+NOISE_Z = 2.0
 
 
 class MetricDelta(BaseModel):
@@ -27,6 +37,7 @@ class MetricDelta(BaseModel):
     candidate: float
     delta: float
     tolerance: float
+    noise: float = 0.0
     regressed: bool
 
 
@@ -37,6 +48,7 @@ class Comparison(BaseModel):
     newly_failing: list[str]
     newly_passing: list[str]
     newly_erroring: list[str]
+    flaky: list[str] = []
     only_in_baseline: list[str]
     only_in_candidate: list[str]
     warnings: list[str]
@@ -44,6 +56,13 @@ class Comparison(BaseModel):
     @property
     def regressions(self) -> list[MetricDelta]:
         return [m for m in self.metrics if m.regressed]
+
+
+def _standard_error(samples: list[float] | None) -> float:
+    """Standard error of the mean of per-repeat aggregates (0 for one run)."""
+    if not samples or len(samples) < 2:
+        return 0.0
+    return statistics.stdev(samples) / math.sqrt(len(samples))
 
 
 def compare_runs(
@@ -69,7 +88,11 @@ def compare_runs(
     deltas = []
     for name in names:
         base, cand = baseline.aggregates[name], candidate.aggregates[name]
-        allowed = tolerances.get(name, tolerance)
+        noise = NOISE_Z * math.hypot(
+            _standard_error(baseline.aggregate_samples.get(name)),
+            _standard_error(candidate.aggregate_samples.get(name)),
+        )
+        allowed = max(tolerances.get(name, tolerance), noise)
         delta = cand - base
         deltas.append(
             MetricDelta(
@@ -78,6 +101,7 @@ def compare_runs(
                 candidate=cand,
                 delta=delta,
                 tolerance=allowed,
+                noise=noise,
                 # Rounding keeps float noise (0.30000000000000004) from gating.
                 regressed=round(-delta, 12) > allowed,
             )
@@ -117,6 +141,7 @@ def compare_runs(
         newly_failing=newly_failing,
         newly_passing=newly_passing,
         newly_erroring=newly_erroring,
+        flaky=[q.id for q in candidate.questions if 0.0 < q.metrics[hit] < 1.0],
         only_in_baseline=sorted(set(base_q) - set(cand_q)),
         only_in_candidate=sorted(set(cand_q) - set(base_q)),
         warnings=warnings,
@@ -137,6 +162,7 @@ def format_summary(result: Comparison) -> str:
         (f"newly failing ({result.hit_metric})", result.newly_failing),
         (f"newly passing ({result.hit_metric})", result.newly_passing),
         ("newly erroring", result.newly_erroring),
+        (f"flaky ({result.hit_metric} varies between repeats)", result.flaky),
         ("only in baseline", result.only_in_baseline),
         ("only in candidate", result.only_in_candidate),
     ):

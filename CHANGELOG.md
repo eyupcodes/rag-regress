@@ -15,4 +15,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `rag-regress compare`: gates a candidate run against a baseline with per-metric tolerances, lists newly failing, passing and erroring questions, and can update the baseline when nothing regressed (#4).
 - Markdown and JSON reports for `compare` (`--report-md`, `--report-json`), suited to PR comments (#5).
 - Composite GitHub Action: runs the golden set, compares with the baseline, updates one PR comment and fails the job on regression (#6).
+- `run --repeats N` for nondeterministic pipelines; `compare` widens tolerances to two standard errors of run-to-run noise and lists flaky questions (#8).
 - Fixed: the golden set fingerprint no longer changes between CRLF and LF checkouts (#6).

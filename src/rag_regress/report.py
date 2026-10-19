@@ -62,6 +62,12 @@ def render_markdown(result: Comparison, *, title: str = "rag-regress") -> str:
             f"| {m.delta:+.3f} | {_fmt(m.tolerance)} | {status} |"
         )
     lines.append("")
+    if any(m.noise > 0 for m in result.metrics):
+        lines += [
+            "Tolerances widen to two standard errors of run-to-run noise "
+            "where that is larger.",
+            "",
+        ]
 
     lines += _question_list(
         f"Newly failing ({result.hit_metric})", result.newly_failing
@@ -70,6 +76,9 @@ def render_markdown(result: Comparison, *, title: str = "rag-regress") -> str:
         f"Newly passing ({result.hit_metric})", result.newly_passing
     )
     lines += _question_list("Newly erroring", result.newly_erroring)
+    lines += _question_list(
+        f"Flaky ({result.hit_metric} varies between repeats)", result.flaky
+    )
     lines += _question_list("Only in baseline", result.only_in_baseline)
     lines += _question_list("Only in candidate", result.only_in_candidate)
 
