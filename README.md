@@ -75,6 +75,19 @@ The run then stores one average per repeat. When both runs have repeats, `compar
 
 On a simulated pipeline with 40 questions and 10 repeats (each question right 80% of the time), comparing two runs of the same pipeline raised a false alarm in 6 of 200 trials (3%). A real drop from 0.8 to 0.7 was caught in 175 of 200 (87.5%). More questions or more repeats narrow the noise band.
 
+### Optional LLM-judge scores
+
+```bash
+pip install "rag-regress[judge]"
+export OPENAI_API_KEY=...            # or RAG_REGRESS_JUDGE_API_KEY
+rag-regress run ... --judge-model gpt-4.1-mini \
+    [--judge-base-url https://your-openai-compatible-server/v1]
+```
+
+This adds `judge_relevance` (does the answer address the question?) for every answered question. It also adds `judge_faithfulness` (are the answer's claims supported by the passages?) when your pipeline returns the passage texts as `contexts`. The judge must reply with strict JSON. A malformed reply is retried once; if it fails again, the question gets a `judge_error` and no judge score, never a silent zero.
+
+Replies are cached in `.rag-regress-cache/judge.json` by model and prompt. Commit that file if you want CI to reuse the scores. Judge scores still move when you change the judge model, so keep the deterministic metrics as your gate, for example `--metric hit@5 --metric recall@5`, and read judge scores as a second opinion.
+
 ## GitHub Action
 
 ```yaml
