@@ -20,6 +20,12 @@ from collections.abc import Iterable, Sequence
 DEFAULT_KS: tuple[int, ...] = (1, 3, 5, 10)
 
 
+def metric_sort_key(name: str) -> tuple[str, int]:
+    """Order ``hit@3`` before ``hit@10``: family first, then k as a number."""
+    family, _, k = name.partition("@")
+    return (family, int(k) if k.isdigit() else 0)
+
+
 def dedupe(ids: Iterable[str]) -> list[str]:
     """Keep the first occurrence of every id, in order."""
     seen: set[str] = set()
