@@ -45,6 +45,12 @@ def run(
     k: Annotated[
         list[int] | None, typer.Option(help="Cut-off for @k metrics; repeatable.")
     ] = None,
+    repeats: Annotated[
+        int,
+        typer.Option(
+            min=1, help="Run every question N times (nondeterministic pipelines)."
+        ),
+    ] = 1,
 ) -> None:
     """Run PIPELINE on every golden question and write a run file."""
     # Resolve 'module:function' against the project being tested.
@@ -57,7 +63,11 @@ def run(
         raise typer.Exit(2) from None
 
     result = run_pipeline(
-        items, fn, ks=k or DEFAULT_KS, golden_sha256=file_sha256(golden)
+        items,
+        fn,
+        ks=k or DEFAULT_KS,
+        repeats=repeats,
+        golden_sha256=file_sha256(golden),
     )
     out.parent.mkdir(parents=True, exist_ok=True)
     result.save(out)
