@@ -44,8 +44,10 @@ class RunResult(BaseModel):
     created_at: str
     golden_sha256: str | None = None
     ks: list[int]
+    repeats: int = 1
     questions: list[QuestionResult]
     aggregates: dict[str, float]
+    aggregate_samples: dict[str, list[float]] = {}
     errors: int
     latency_ms_p50: float
     latency_ms_p95: float
@@ -113,48 +115,72 @@ def file_sha256(path: str | Path) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _call(
+    item: GoldenItem, pipeline: Pipeline, clock: Callable[[], float]
+) -> tuple[list[str], str | None, float, str | None]:
+    started = clock()
+    error: str | None = None
+    try:
+        ids, answer = _parse_output(pipeline(item.query))
+    except Exception as exc:  # the pipeline is user code: record, don't abort
+        ids, answer = [], None
+        error = f"{type(exc).__name__}: {exc}"
+    return ids, answer, (clock() - started) * 1000, error
+
+
 def run_pipeline(
     items: Sequence[GoldenItem],
     pipeline: Pipeline,
     *,
     ks: Sequence[int] = DEFAULT_KS,
+    repeats: int = 1,
     golden_sha256: str | None = None,
     clock: Callable[[], float] = time.perf_counter,
 ) -> RunResult:
+    """Score every question, ``repeats`` times for nondeterministic pipelines.
+
+    With repeats, a question's metrics are the mean over its attempts, ids and
+    answer come from the first attempt, latency is the mean, and the first
+    error (if any) is kept. ``aggregate_samples`` holds one mean per repeat so
+    that :func:`compare_runs` can tell run-to-run noise from a real drop.
+    """
     if not items:
         raise ValueError("golden set is empty")
+    if repeats < 1:
+        raise ValueError("repeats must be at least 1")
     ks = sorted(set(ks))
-    results: list[QuestionResult] = []
-    for item in items:
-        started = clock()
-        error: str | None = None
-        try:
-            ids, answer = _parse_output(pipeline(item.query))
-        except Exception as exc:  # the pipeline is user code: record, don't abort
-            ids, answer = [], None
-            error = f"{type(exc).__name__}: {exc}"
-        latency_ms = (clock() - started) * 1000
-        results.append(
-            QuestionResult(
-                id=item.id,
-                tags=item.tags,
-                retrieved_ids=ids,
-                answer=answer,
-                latency_ms=round(latency_ms, 3),
-                error=error,
-                metrics=question_metrics(
-                    ids,
-                    item.relevant_ids,
-                    answer=answer,
-                    reference_answer=item.reference_answer,
-                    ks=ks,
-                ),
-            )
-        )
 
+    attempts: list[list[QuestionResult]] = [[] for _ in items]
+    for _ in range(repeats):
+        for slot, item in zip(attempts, items, strict=True):
+            ids, answer, latency_ms, error = _call(item, pipeline, clock)
+            slot.append(
+                QuestionResult(
+                    id=item.id,
+                    tags=item.tags,
+                    retrieved_ids=ids,
+                    answer=answer,
+                    latency_ms=round(latency_ms, 3),
+                    error=error,
+                    metrics=question_metrics(
+                        ids,
+                        item.relevant_ids,
+                        answer=answer,
+                        reference_answer=item.reference_answer,
+                        ks=ks,
+                    ),
+                )
+            )
+
+    results = [_merge_attempts(slot) for slot in attempts]
     names = sorted({name for r in results for name in r.metrics}, key=metric_sort_key)
-    aggregates = {
-        name: statistics.fmean(r.metrics[name] for r in results if name in r.metrics)
+    samples = {
+        name: [
+            statistics.fmean(
+                slot[i].metrics[name] for slot in attempts if name in slot[i].metrics
+            )
+            for i in range(repeats)
+        ]
         for name in names
     }
     latencies = [r.latency_ms for r in results]
@@ -162,9 +188,27 @@ def run_pipeline(
         created_at=datetime.now(UTC).isoformat(timespec="seconds"),
         golden_sha256=golden_sha256,
         ks=ks,
+        repeats=repeats,
         questions=results,
-        aggregates=aggregates,
+        aggregates={name: statistics.fmean(v) for name, v in samples.items()},
+        aggregate_samples=samples if repeats > 1 else {},
         errors=sum(r.error is not None for r in results),
         latency_ms_p50=round(_percentile(latencies, 50), 3),
         latency_ms_p95=round(_percentile(latencies, 95), 3),
+    )
+
+
+def _merge_attempts(slot: list[QuestionResult]) -> QuestionResult:
+    first = slot[0]
+    if len(slot) == 1:
+        return first
+    return first.model_copy(
+        update={
+            "latency_ms": round(statistics.fmean(a.latency_ms for a in slot), 3),
+            "error": next((a.error for a in slot if a.error), None),
+            "metrics": {
+                name: statistics.fmean(a.metrics[name] for a in slot)
+                for name in first.metrics
+            },
+        }
     )
