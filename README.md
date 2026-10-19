@@ -62,6 +62,19 @@ Add `--report-md report.md` to get a short Markdown report for a pull request co
 
 Exit codes: `0` pass, `1` regression, `2` bad input. A warning is printed when the golden set changed between the two runs.
 
+### Nondeterministic pipelines
+
+If your pipeline samples, or uses an approximate index, the same question can pass on one run and fail on the next. Run every question several times:
+
+```bash
+rag-regress run --golden eval/golden.jsonl --pipeline myapp.rag:answer \
+    --out runs/candidate.json --repeats 10
+```
+
+The run then stores one average per repeat. When both runs have repeats, `compare` widens each metric's allowed drop to two standard errors of that run-to-run noise, if that is larger than the tolerance. It lists questions whose result varies between repeats as **flaky**.
+
+On a simulated pipeline with 40 questions and 10 repeats (each question right 80% of the time), comparing two runs of the same pipeline raised a false alarm in 6 of 200 trials (3%). A real drop from 0.8 to 0.7 was caught in 175 of 200 (87.5%). More questions or more repeats narrow the noise band.
+
 ## GitHub Action
 
 ```yaml
