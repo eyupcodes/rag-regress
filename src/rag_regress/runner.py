@@ -18,6 +18,7 @@ import importlib
 import statistics
 import time
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from .golden import GoldenItem
+from .judge import Judge
 from .metrics import DEFAULT_KS, metric_sort_key, question_metrics
 
 Pipeline = Callable[[str], Any]
@@ -37,6 +39,7 @@ class QuestionResult(BaseModel):
     answer: str | None = None
     latency_ms: float
     error: str | None = None
+    judge_error: str | None = None
     metrics: dict[str, float]
 
 
@@ -115,17 +118,60 @@ def file_sha256(path: str | Path) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _call(
-    item: GoldenItem, pipeline: Pipeline, clock: Callable[[], float]
-) -> tuple[list[str], str | None, float, str | None]:
+def _parse_contexts(output: Any) -> list[str] | None:
+    """Optional passage texts, used only by the LLM judge's faithfulness score."""
+    if isinstance(output, Mapping):
+        contexts = output.get("contexts")
+    else:
+        contexts = getattr(output, "contexts", None)
+    if contexts is None:
+        return None
+    if isinstance(contexts, str | bytes) or not all(
+        isinstance(c, str) for c in contexts
+    ):
+        raise TypeError("contexts must be a list of strings")
+    return list(contexts)
+
+
+@dataclass
+class _Attempt:
+    ids: list[str]
+    answer: str | None
+    contexts: list[str] | None
+    latency_ms: float
+    error: str | None
+
+
+def _call(item: GoldenItem, pipeline: Pipeline, clock: Callable[[], float]) -> _Attempt:
     started = clock()
     error: str | None = None
     try:
-        ids, answer = _parse_output(pipeline(item.query))
+        output = pipeline(item.query)
+        ids, answer = _parse_output(output)
+        contexts = _parse_contexts(output)
     except Exception as exc:  # the pipeline is user code: record, don't abort
-        ids, answer = [], None
+        ids, answer, contexts = [], None, None
         error = f"{type(exc).__name__}: {exc}"
-    return ids, answer, (clock() - started) * 1000, error
+    return _Attempt(ids, answer, contexts, (clock() - started) * 1000, error)
+
+
+def _score(
+    item: GoldenItem, attempt: _Attempt, ks: Sequence[int], judge: Judge | None
+) -> tuple[dict[str, float], str | None]:
+    metrics = question_metrics(
+        attempt.ids,
+        item.relevant_ids,
+        answer=attempt.answer,
+        reference_answer=item.reference_answer,
+        ks=ks,
+    )
+    if judge is None or attempt.answer is None or attempt.error:
+        return metrics, None
+    try:
+        metrics.update(judge.metrics(item.query, attempt.answer, attempt.contexts))
+    except Exception as exc:  # a judge failure must not look like a 0 score
+        return metrics, f"{type(exc).__name__}: {exc}"
+    return metrics, None
 
 
 def run_pipeline(
@@ -135,6 +181,7 @@ def run_pipeline(
     ks: Sequence[int] = DEFAULT_KS,
     repeats: int = 1,
     golden_sha256: str | None = None,
+    judge: Judge | None = None,
     clock: Callable[[], float] = time.perf_counter,
 ) -> RunResult:
     """Score every question, ``repeats`` times for nondeterministic pipelines.
@@ -153,36 +200,32 @@ def run_pipeline(
     attempts: list[list[QuestionResult]] = [[] for _ in items]
     for _ in range(repeats):
         for slot, item in zip(attempts, items, strict=True):
-            ids, answer, latency_ms, error = _call(item, pipeline, clock)
+            attempt = _call(item, pipeline, clock)
+            metrics, judge_error = _score(item, attempt, ks, judge)
             slot.append(
                 QuestionResult(
                     id=item.id,
                     tags=item.tags,
-                    retrieved_ids=ids,
-                    answer=answer,
-                    latency_ms=round(latency_ms, 3),
-                    error=error,
-                    metrics=question_metrics(
-                        ids,
-                        item.relevant_ids,
-                        answer=answer,
-                        reference_answer=item.reference_answer,
-                        ks=ks,
-                    ),
+                    retrieved_ids=attempt.ids,
+                    answer=attempt.answer,
+                    latency_ms=round(attempt.latency_ms, 3),
+                    error=attempt.error,
+                    judge_error=judge_error,
+                    metrics=metrics,
                 )
             )
 
     results = [_merge_attempts(slot) for slot in attempts]
     names = sorted({name for r in results for name in r.metrics}, key=metric_sort_key)
-    samples = {
-        name: [
-            statistics.fmean(
-                slot[i].metrics[name] for slot in attempts if name in slot[i].metrics
-            )
+    samples: dict[str, list[float]] = {}
+    for name in names:
+        per_repeat = (
+            [slot[i].metrics[name] for slot in attempts if name in slot[i].metrics]
             for i in range(repeats)
-        ]
-        for name in names
-    }
+        )
+        # A repeat where no question has this metric (say, the judge failed
+        # everywhere) contributes no sample rather than a fake zero.
+        samples[name] = [statistics.fmean(v) for v in per_repeat if v]
     latencies = [r.latency_ms for r in results]
     return RunResult(
         created_at=datetime.now(UTC).isoformat(timespec="seconds"),
@@ -206,9 +249,14 @@ def _merge_attempts(slot: list[QuestionResult]) -> QuestionResult:
         update={
             "latency_ms": round(statistics.fmean(a.latency_ms for a in slot), 3),
             "error": next((a.error for a in slot if a.error), None),
+            "judge_error": next((a.judge_error for a in slot if a.judge_error), None),
             "metrics": {
-                name: statistics.fmean(a.metrics[name] for a in slot)
-                for name in first.metrics
+                name: statistics.fmean(
+                    a.metrics[name] for a in slot if name in a.metrics
+                )
+                for name in sorted(
+                    {n for a in slot for n in a.metrics}, key=metric_sort_key
+                )
             },
         }
     )

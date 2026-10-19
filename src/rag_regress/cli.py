@@ -17,6 +17,7 @@ from pydantic import ValidationError
 
 from .compare import DEFAULT_TOLERANCE, compare_runs, format_summary
 from .golden import GoldenSetError, load_golden_set
+from .judge import JudgeError, judge_from_env
 from .metrics import DEFAULT_KS
 from .report import render_json, render_markdown
 from .runner import (
@@ -51,6 +52,16 @@ def run(
             min=1, help="Run every question N times (nondeterministic pipelines)."
         ),
     ] = 1,
+    judge_model: Annotated[
+        str | None,
+        typer.Option(help="Add LLM-judge scores with this model (needs an API key)."),
+    ] = None,
+    judge_base_url: Annotated[
+        str | None, typer.Option(help="OpenAI-compatible endpoint for the judge.")
+    ] = None,
+    judge_cache: Annotated[
+        Path, typer.Option(help="Cache of judge replies, so reruns score the same.")
+    ] = Path(".rag-regress-cache/judge.json"),
 ) -> None:
     """Run PIPELINE on every golden question and write a run file."""
     # Resolve 'module:function' against the project being tested.
@@ -58,7 +69,12 @@ def run(
     try:
         items = load_golden_set(golden)
         fn = load_pipeline(pipeline)
-    except (GoldenSetError, PipelineLoadError) as exc:
+        judge = (
+            judge_from_env(judge_model, base_url=judge_base_url, cache_path=judge_cache)
+            if judge_model
+            else None
+        )
+    except (GoldenSetError, PipelineLoadError, JudgeError, ImportError) as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(2) from None
 
@@ -68,6 +84,7 @@ def run(
         ks=k or DEFAULT_KS,
         repeats=repeats,
         golden_sha256=file_sha256(golden),
+        judge=judge,
     )
     out.parent.mkdir(parents=True, exist_ok=True)
     result.save(out)
