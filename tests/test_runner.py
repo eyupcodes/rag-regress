@@ -175,3 +175,19 @@ def test_golden_fingerprint_ignores_line_endings(tmp_path: Path) -> None:
     assert file_sha256(unix) == file_sha256(windows)
     windows.write_bytes(b'{"a": 1}\r\n{"b": 3}\r\n')
     assert file_sha256(unix) != file_sha256(windows)
+
+
+def test_cli_run_reports_unreadable_golden_set_with_exit_code_2(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    result = CliRunner().invoke(
+        app,
+        ["run", "--golden", str(tmp_path), "--pipeline", "my_rag:search"]
+        + ["--out", str(tmp_path / "run.json")],
+    )
+
+    assert result.exit_code == 2
+    assert "error:" in result.output
+    assert "cannot read" in result.output
