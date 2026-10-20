@@ -78,3 +78,16 @@ def test_rejects_malformed_files(tmp_path: Path, raw: str, message: str) -> None
 def test_missing_file_is_a_clear_error(tmp_path: Path) -> None:
     with pytest.raises(GoldenSetError, match="file not found"):
         load_golden_set(tmp_path / "nope.jsonl")
+
+
+def test_directory_is_a_clear_error(tmp_path: Path) -> None:
+    with pytest.raises(GoldenSetError, match="cannot read"):
+        load_golden_set(tmp_path)
+
+
+def test_non_utf8_file_is_a_clear_error(tmp_path: Path) -> None:
+    path = tmp_path / "golden.jsonl"
+    path.write_bytes('{"id": "q1"}'.encode("utf-16"))
+
+    with pytest.raises(GoldenSetError, match="not valid UTF-8"):
+        load_golden_set(path)
