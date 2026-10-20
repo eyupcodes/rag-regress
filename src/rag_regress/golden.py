@@ -52,6 +52,10 @@ def load_golden_set(path: str | Path) -> list[GoldenItem]:
         lines = path.read_text(encoding="utf-8").splitlines()
     except FileNotFoundError:
         raise GoldenSetError(f"{path}: file not found") from None
+    except UnicodeDecodeError:
+        raise GoldenSetError(f"{path}: not valid UTF-8 text") from None
+    except OSError as exc:
+        raise GoldenSetError(f"{path}: cannot read ({exc.strerror or exc})") from None
 
     items: list[GoldenItem] = []
     seen: dict[str, int] = {}
