@@ -18,3 +18,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `run --repeats N` for nondeterministic pipelines; `compare` widens tolerances to two standard errors of run-to-run noise and lists flaky questions (#8).
 - Optional LLM-judge scores (`judge_relevance`, `judge_faithfulness`) via any OpenAI-compatible API, with a reply cache and per-question `judge_error` (#7).
 - Fixed: the golden set fingerprint no longer changes between CRLF and LF checkouts (#6).
+- Fixed: a golden set that is a directory, unreadable or not UTF-8 now fails `run` with `error:` and exit code 2 instead of a traceback (#19).
