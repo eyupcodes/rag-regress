@@ -179,3 +179,27 @@ def test_cli_missing_or_invalid_run_file_exits_2(tmp_path: Path) -> None:
         == 2
     )
     assert invoke("--baseline", str(bad), "--candidate", str(bad)).exit_code == 2
+
+
+@pytest.mark.parametrize(
+    ("content", "reason"),
+    [
+        ("not json", "Invalid JSON"),
+        ("[]", "Input should be an object"),
+        ("{}", "created_at: Field required"),
+    ],
+)
+def test_cli_invalid_run_file_error_names_the_file(
+    tmp_path: Path, content: str, reason: str
+) -> None:
+    good = save(make_run(ALL_RIGHT), tmp_path / "good.json")
+    bad = tmp_path / "bad.json"
+    bad.write_text(content, encoding="utf-8")
+
+    result = invoke("--baseline", str(good), "--candidate", str(bad))
+
+    assert result.exit_code == 2
+    assert f"{bad}: not a valid run file" in result.output
+    assert reason in result.output
+    assert "errors.pydantic.dev" not in result.output
+    assert "validation error for" not in result.output
