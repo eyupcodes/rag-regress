@@ -20,3 +20,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed: the golden set fingerprint no longer changes between CRLF and LF checkouts (#6).
 - Fixed: a golden set that is a directory, unreadable or not UTF-8 now fails `run` with `error:` and exit code 2 instead of a traceback (#19).
 - Fixed: `compare` on an invalid run file prints `error: <file>: not a valid run file (<reason>)` and exits 2, instead of a pydantic validation dump that did not name the file (#21).
+- Fixed: `compare --tolerance-for` with a name that is not a metric in both runs now exits 2 naming it, instead of being silently ignored (#23).
