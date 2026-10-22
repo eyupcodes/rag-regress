@@ -80,6 +80,9 @@ def compare_runs(
     shared = sorted(
         set(baseline.aggregates) & set(candidate.aggregates), key=metric_sort_key
     )
+    unknown = [n for n in tolerances if n not in shared]
+    if unknown:
+        raise ValueError(f"tolerance set for unknown metrics: {', '.join(unknown)}")
     names = shared if gate is None else list(dict.fromkeys(gate))
     missing = [n for n in names if n not in shared]
     if missing:

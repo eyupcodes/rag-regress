@@ -105,6 +105,12 @@ def test_invalid_arguments() -> None:
         compare_runs(run, other)
 
 
+def test_tolerance_for_unknown_metric_is_rejected() -> None:
+    run = make_run(ALL_RIGHT)
+    with pytest.raises(ValueError, match="unknown metrics: recal@3"):
+        compare_runs(run, run, tolerances={"recal@3": 0.1})
+
+
 def save(run: RunResult, path: Path) -> Path:
     run.save(path)
     return path
@@ -203,3 +209,17 @@ def test_cli_invalid_run_file_error_names_the_file(
     assert reason in result.output
     assert "errors.pydantic.dev" not in result.output
     assert "validation error for" not in result.output
+
+
+def test_cli_rejects_misspelled_tolerance_for(tmp_path: Path) -> None:
+    base = save(make_run(ALL_RIGHT), tmp_path / "base.json")
+    result = invoke(
+        "--baseline",
+        str(base),
+        "--candidate",
+        str(base),
+        "--tolerance-for",
+        "recal@3=0.1",
+    )
+    assert result.exit_code == 2
+    assert "recal@3" in result.output
