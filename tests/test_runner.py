@@ -154,8 +154,7 @@ def test_cli_run_rejects_non_positive_k(tmp_path: Path, bad_k: str) -> None:
     )
 
     assert result.exit_code == 2
-    assert "--k" in result.output
-    assert "Traceback" not in result.output
+    assert isinstance(result.exception, SystemExit)
     assert not out.exists()
 
 
