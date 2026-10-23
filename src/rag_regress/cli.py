@@ -44,7 +44,8 @@ def run(
     ],
     out: Annotated[Path, typer.Option(help="Where to write the run (JSON).")],
     k: Annotated[
-        list[int] | None, typer.Option(help="Cut-off for @k metrics; repeatable.")
+        list[int] | None,
+        typer.Option(min=1, help="Cut-off for @k metrics; repeatable."),
     ] = None,
     repeats: Annotated[
         int,
