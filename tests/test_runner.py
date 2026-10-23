@@ -144,6 +144,21 @@ def test_cli_run_writes_a_run_file(tmp_path: Path, monkeypatch) -> None:
     assert run.golden_sha256 and len(run.golden_sha256) == 64
 
 
+@pytest.mark.parametrize("bad_k", ["0", "-1"])
+def test_cli_run_rejects_non_positive_k(tmp_path: Path, bad_k: str) -> None:
+    out = tmp_path / "run.json"
+    result = CliRunner().invoke(
+        app,
+        ["run", "--golden", "g.jsonl", "--pipeline", "m:f", "--out", str(out)]
+        + ["--k", bad_k],
+    )
+
+    assert result.exit_code == 2
+    assert "--k" in result.output
+    assert "Traceback" not in result.output
+    assert not out.exists()
+
+
 @pytest.mark.parametrize(
     ("pipeline", "golden_text"),
     [
