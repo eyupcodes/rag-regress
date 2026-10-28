@@ -91,3 +91,31 @@ def test_non_utf8_file_is_a_clear_error(tmp_path: Path) -> None:
 
     with pytest.raises(GoldenSetError, match="not valid UTF-8"):
         load_golden_set(path)
+
+
+def test_unicode_line_separators_inside_strings_do_not_split_lines(
+    tmp_path: Path,
+) -> None:
+    path = write(
+        tmp_path,
+        raw=(
+            '{"id": "q1", "query": "first\u2028second\u0085third", '
+            '"relevant_ids": ["d1"]}\r\n'
+            '{"id": "q2", "query": "ok", "relevant_ids": ["d2"]}\r\n'
+        ),
+    )
+
+    items = load_golden_set(path)
+
+    assert [i.id for i in items] == ["q1", "q2"]
+    assert items[0].query == "first\u2028second\u0085third"
+
+
+def test_error_line_numbers_ignore_unicode_separators(tmp_path: Path) -> None:
+    path = write(
+        tmp_path,
+        raw=('{"id": "q1", "query": "a\u2028b", "relevant_ids": ["d1"]}\nnot json\n'),
+    )
+
+    with pytest.raises(GoldenSetError, match=r"golden\.jsonl:2: invalid JSON"):
+        load_golden_set(path)
