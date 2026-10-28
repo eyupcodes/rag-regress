@@ -49,7 +49,7 @@ def load_golden_set(path: str | Path) -> list[GoldenItem]:
     """Read and validate a golden set; fail on the first bad line."""
     path = Path(path)
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
+        text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         raise GoldenSetError(f"{path}: file not found") from None
     except UnicodeDecodeError:
@@ -59,7 +59,9 @@ def load_golden_set(path: str | Path) -> list[GoldenItem]:
 
     items: list[GoldenItem] = []
     seen: dict[str, int] = {}
-    for number, line in enumerate(lines, start=1):
+    # Not str.splitlines(): it also splits on U+2028 and similar characters,
+    # which JSON allows unescaped inside strings.
+    for number, line in enumerate(text.split("\n"), start=1):
         if not line.strip():
             continue
         where = f"{path}:{number}"
