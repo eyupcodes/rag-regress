@@ -223,3 +223,23 @@ def test_cli_rejects_misspelled_tolerance_for(tmp_path: Path) -> None:
     )
     assert result.exit_code == 2
     assert "recal@3" in result.output
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [{"tolerance": float("nan")}, {"tolerances": {"hit@3": float("nan")}}],
+)
+def test_nan_tolerance_is_rejected(kwargs: dict) -> None:
+    worse = {**ALL_RIGHT, "q2": ["zzz"]}
+
+    with pytest.raises(ValueError, match="NaN"):
+        compare_runs(make_run(ALL_RIGHT), make_run(worse), **kwargs)
+
+
+def test_cli_rejects_nan_tolerance(tmp_path: Path) -> None:
+    base = save(make_run(ALL_RIGHT), tmp_path / "base.json")
+    result = invoke(
+        "--baseline", str(base), "--candidate", str(base), "--tolerance", "nan"
+    )
+    assert result.exit_code == 2
+    assert "NaN" in result.output
