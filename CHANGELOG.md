@@ -22,3 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed: `compare` on an invalid run file prints `error: <file>: not a valid run file (<reason>)` and exits 2, instead of a pydantic validation dump that did not name the file (#21).
 - Fixed: `compare --tolerance-for` with a name that is not a metric in both runs now exits 2 naming it, instead of being silently ignored (#23).
 - Fixed: `run --k 0` or a negative `--k` is rejected as a usage error (exit 2) instead of crashing with a traceback (#25).
+
+### Fixed
+
+- `compare` rejects NaN tolerances (exit 2) instead of silently passing every comparison (#29).
