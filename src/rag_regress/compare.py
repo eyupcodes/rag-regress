@@ -73,7 +73,11 @@ def compare_runs(
     tolerances: Mapping[str, float] | None = None,
     gate: Iterable[str] | None = None,
 ) -> Comparison:
-    if tolerance < 0 or any(t < 0 for t in (tolerances or {}).values()):
+    given = [tolerance, *(tolerances or {}).values()]
+    if any(math.isnan(t) for t in given):
+        # NaN compares false with everything, which would switch the gate off.
+        raise ValueError("tolerances must be numbers, not NaN")
+    if any(t < 0 for t in given):
         raise ValueError("tolerances must not be negative")
     tolerances = dict(tolerances or {})
 
