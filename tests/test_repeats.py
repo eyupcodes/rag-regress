@@ -127,6 +127,8 @@ def test_cli_repeats_option(tmp_path: Path, monkeypatch) -> None:
 
 def test_run_file_with_utf8_bom_loads(tmp_path: Path) -> None:
     path = tmp_path / "bom.json"
-    path.write_bytes(b"\xef\xbb\xbf" + run(1.0, 1).model_dump_json().encode("utf-8"))
+    path.write_bytes(
+        b"\xef\xbb\xbf" + run(1.0, 1, repeats=3).model_dump_json().encode("utf-8")
+    )
 
-    assert RunResult.load(path).repeats == 1
+    assert RunResult.load(path).repeats == 3
