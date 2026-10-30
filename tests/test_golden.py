@@ -43,6 +43,14 @@ def test_loads_valid_items_and_skips_blank_lines(tmp_path: Path) -> None:
         ({"id": "q", "query": "x", "relevant_ids": ["d"], "extra": 1}, "extra"),
     ],
 )
+def test_loads_file_with_utf8_bom(tmp_path: Path) -> None:
+    path = tmp_path / "golden.jsonl"
+    row = '{"id": "q1", "query": "Ankara?", "relevant_ids": ["d1"]}\n'
+    path.write_bytes(b"\xef\xbb\xbf" + row.encode("utf-8"))
+
+    assert [i.id for i in load_golden_set(path)] == ["q1"]
+
+
 def test_rejects_invalid_items_with_line_number(
     tmp_path: Path, row: dict, message: str
 ) -> None:

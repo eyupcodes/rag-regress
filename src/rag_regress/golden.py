@@ -49,7 +49,8 @@ def load_golden_set(path: str | Path) -> list[GoldenItem]:
     """Read and validate a golden set; fail on the first bad line."""
     path = Path(path)
     try:
-        text = path.read_text(encoding="utf-8")
+        # utf-8-sig drops the BOM that Excel and Windows editors prepend.
+        text = path.read_text(encoding="utf-8-sig")
     except FileNotFoundError:
         raise GoldenSetError(f"{path}: file not found") from None
     except UnicodeDecodeError:
