@@ -61,7 +61,7 @@ class RunResult(BaseModel):
     @classmethod
     def load(cls, path: str | Path) -> RunResult:
         """Read a run file; raises ``ValueError`` naming the file if it is invalid."""
-        text = Path(path).read_text(encoding="utf-8")
+        text = Path(path).read_text(encoding="utf-8-sig")
         try:
             return cls.model_validate_json(text)
         except ValidationError as exc:
