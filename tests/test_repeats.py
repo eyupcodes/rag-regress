@@ -123,3 +123,10 @@ def test_cli_repeats_option(tmp_path: Path, monkeypatch) -> None:
         + ["--out", str(out), "--repeats", "0"],
     )
     assert bad.exit_code == 2
+
+
+def test_run_file_with_utf8_bom_loads(tmp_path: Path) -> None:
+    path = tmp_path / "bom.json"
+    path.write_bytes(b"\xef\xbb\xbf" + run(1.0, 1).model_dump_json().encode("utf-8"))
+
+    assert RunResult.load(path).repeats == 1
