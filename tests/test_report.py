@@ -4,7 +4,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from rag_regress.cli import app
-from rag_regress.compare import Comparison, MetricDelta
+from rag_regress.compare import Comparison, MetricDelta, SliceDelta
 from rag_regress.report import MARKER, render_json, render_markdown
 
 
@@ -105,3 +105,22 @@ def test_cli_writes_both_reports(tmp_path: Path) -> None:
     assert result.exit_code == 1
     assert md.read_text(encoding="utf-8").startswith(MARKER)
     assert json.loads(js.read_text(encoding="utf-8"))["passed"] is False
+
+
+def test_markdown_and_json_include_tag_slices() -> None:
+    slices = [
+        SliceDelta(tag="billing", questions=2, baseline=1.0, candidate=0.5, delta=-0.5),
+        SliceDelta(tag="faq", questions=3, baseline=0.6, candidate=0.6, delta=0.0),
+    ]
+    result = comparison(slices=slices)
+
+    text = render_markdown(result)
+
+    assert "**By tag** (hit@5, informational, not gated)" in text
+    assert "| `billing` | 2 | 1.000 | 0.500 | -0.500 |" in text
+    assert text.index("`billing`") < text.index("`faq`")
+    assert json.loads(render_json(result))["slices"][0]["tag"] == "billing"
+
+
+def test_markdown_without_slices_has_no_tag_section() -> None:
+    assert "By tag" not in render_markdown(comparison())
