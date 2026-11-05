@@ -298,3 +298,14 @@ def test_runs_without_tags_have_no_slices() -> None:
     result = compare_runs(make_run(ALL_RIGHT), make_run(ALL_RIGHT))
     assert result.slices == []
     assert "by tag" not in format_summary(result)
+
+
+def test_a_repeated_tag_counts_the_question_once() -> None:
+    tags = {"q1": ("billing", "billing"), "q2": ("billing",)}
+    broken = {**ALL_RIGHT, "q1": ["d9"]}
+
+    result = compare_runs(tagged_run(ALL_RIGHT, tags), tagged_run(broken, tags))
+
+    (billing,) = result.slices
+    assert billing.questions == 2
+    assert billing.candidate == 0.5

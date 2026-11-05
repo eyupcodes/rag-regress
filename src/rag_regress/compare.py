@@ -83,12 +83,12 @@ def _tag_slices(
 ) -> list[SliceDelta]:
     """Mean ``hit`` per tag over the questions both runs answered, worst drop first.
 
-    A question with several tags counts in each of them. Slices never gate.
+    A question with several tags counts once in each of its tags. Slices never gate.
     """
     by_tag: dict[str, list[str]] = {}
     for qid, after in cand_q.items():
         if qid in base_q:
-            for tag in after.tags:
+            for tag in dict.fromkeys(after.tags):
                 by_tag.setdefault(tag, []).append(qid)
     slices = []
     for tag, ids in by_tag.items():
