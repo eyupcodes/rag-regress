@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Tag slices count a question once even if it lists the same tag twice (#35).
 - Golden set files and run files with a UTF-8 BOM (Excel, Windows editors) now load instead of failing as invalid JSON (#31).
 
 ### Added
