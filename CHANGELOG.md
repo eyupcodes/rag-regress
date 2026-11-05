@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `compare` reports hit-rate slices per golden-set tag (CLI summary, `--report-md`, `--report-json`), worst drop first; they are informational and do not gate (#33).
+
 - Golden set loader for JSONL files with per-line validation (#1).
 - Deterministic metrics: hit, recall, precision, MRR and nDCG at k, exact match and token F1 (#2).
 - `rag-regress run`: runs a `module:function` pipeline over the golden set and writes a JSON run file, recording per-question errors (#3).
