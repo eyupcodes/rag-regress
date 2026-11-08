@@ -92,15 +92,15 @@ def _tag_slices(
                 by_tag.setdefault(tag, []).append(qid)
     slices = []
     for tag, ids in by_tag.items():
-        before = statistics.fmean(base_q[i].metrics[hit] for i in ids)
-        after = statistics.fmean(cand_q[i].metrics[hit] for i in ids)
+        mean_before = statistics.fmean(base_q[i].metrics[hit] for i in ids)
+        mean_after = statistics.fmean(cand_q[i].metrics[hit] for i in ids)
         slices.append(
             SliceDelta(
                 tag=tag,
                 questions=len(ids),
-                baseline=before,
-                candidate=after,
-                delta=after - before,
+                baseline=mean_before,
+                candidate=mean_after,
+                delta=mean_after - mean_before,
             )
         )
     return sorted(slices, key=lambda s: (s.delta, s.tag))
