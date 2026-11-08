@@ -60,6 +60,8 @@ FAIL: quality regressed
 
 Add `--report-md report.md` to get a short Markdown report for a pull request comment: the verdict, a metric table with regressions on top, and the questions that changed. `--report-json report.json` writes the same comparison for other tools.
 
+If your golden questions carry `tags`, `compare` also prints a **by tag** section: the `hit@K` rate of each tag in both runs, worst drop first, so a regression confined to one topic is visible even when the overall average barely moves. Slices are informational; they never change the exit code. They are included in `--report-md` and `--report-json` (`slices`).
+
 Exit codes: `0` pass, `1` regression, `2` bad input. A warning is printed when the golden set changed between the two runs.
 
 ### Nondeterministic pipelines

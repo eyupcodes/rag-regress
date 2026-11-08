@@ -243,3 +243,69 @@ def test_cli_rejects_nan_tolerance(tmp_path: Path) -> None:
     )
     assert result.exit_code == 2
     assert "NaN" in result.output
+
+
+def tagged_run(answers: dict[str, list[str]], tags: dict[str, tuple[str, ...]]):
+    items = [
+        GoldenItem(
+            id=f"q{i}",
+            query=f"q{i}",
+            relevant_ids=(f"d{i}",),
+            tags=tags.get(f"q{i}", ()),
+        )
+        for i in range(1, 5)
+    ]
+    return run_pipeline(items, lambda query: answers[query], ks=[1, 3])
+
+
+TAGS = {
+    "q1": ("billing",),
+    "q2": ("billing", "faq"),
+    "q3": ("faq",),
+}
+
+
+def test_slices_show_a_drop_confined_to_one_tag_without_gating() -> None:
+    broken = {**ALL_RIGHT, "q1": ["d9"]}
+    result = compare_runs(
+        tagged_run(ALL_RIGHT, TAGS),
+        tagged_run(broken, TAGS),
+        gate=["hit@3"],
+        tolerance=1.0,
+    )
+    by_tag = {s.tag: s for s in result.slices}
+    assert set(by_tag) == {"billing", "faq"}
+    assert by_tag["billing"].questions == 2
+    assert by_tag["billing"].baseline == 1.0
+    assert by_tag["billing"].candidate == 0.5
+    assert by_tag["billing"].delta == -0.5
+    assert by_tag["faq"].delta == 0.0
+    assert [s.tag for s in result.slices] == ["billing", "faq"]  # worst first
+    assert result.passed  # slices are informational
+    text = format_summary(result)
+    assert "by tag (hit@3, not gated):" in text
+    assert "billing: 1.000 -> 0.500 (-0.500, 2 questions)" in text
+
+
+def test_slices_ignore_questions_missing_from_one_run() -> None:
+    base = tagged_run(ALL_RIGHT, TAGS)
+    cand = base.model_copy(update={"questions": base.questions[1:]})
+    result = compare_runs(base, cand)
+    assert {s.tag: s.questions for s in result.slices} == {"billing": 1, "faq": 2}
+
+
+def test_runs_without_tags_have_no_slices() -> None:
+    result = compare_runs(make_run(ALL_RIGHT), make_run(ALL_RIGHT))
+    assert result.slices == []
+    assert "by tag" not in format_summary(result)
+
+
+def test_a_repeated_tag_counts_the_question_once() -> None:
+    tags = {"q1": ("billing", "billing"), "q2": ("billing",)}
+    broken = {**ALL_RIGHT, "q1": ["d9"]}
+
+    result = compare_runs(tagged_run(ALL_RIGHT, tags), tagged_run(broken, tags))
+
+    (billing,) = result.slices
+    assert billing.questions == 2
+    assert billing.candidate == 0.5

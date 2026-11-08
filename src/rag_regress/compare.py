@@ -25,7 +25,7 @@ from collections.abc import Iterable, Mapping
 from pydantic import BaseModel
 
 from .metrics import metric_sort_key
-from .runner import RunResult
+from .runner import QuestionResult, RunResult
 
 DEFAULT_TOLERANCE = 0.02
 NOISE_Z = 2.0
@@ -41,6 +41,16 @@ class MetricDelta(BaseModel):
     regressed: bool
 
 
+class SliceDelta(BaseModel):
+    """Hit rate of the questions sharing one tag, in both runs (informational)."""
+
+    tag: str
+    questions: int
+    baseline: float
+    candidate: float
+    delta: float
+
+
 class Comparison(BaseModel):
     passed: bool
     hit_metric: str
@@ -49,6 +59,7 @@ class Comparison(BaseModel):
     newly_passing: list[str]
     newly_erroring: list[str]
     flaky: list[str] = []
+    slices: list[SliceDelta] = []
     only_in_baseline: list[str]
     only_in_candidate: list[str]
     warnings: list[str]
@@ -63,6 +74,36 @@ def _standard_error(samples: list[float] | None) -> float:
     if not samples or len(samples) < 2:
         return 0.0
     return statistics.stdev(samples) / math.sqrt(len(samples))
+
+
+def _tag_slices(
+    base_q: Mapping[str, QuestionResult],
+    cand_q: Mapping[str, QuestionResult],
+    hit: str,
+) -> list[SliceDelta]:
+    """Mean ``hit`` per tag over the questions both runs answered, worst drop first.
+
+    A question with several tags counts once in each of its tags. Slices never gate.
+    """
+    by_tag: dict[str, list[str]] = {}
+    for qid, after in cand_q.items():
+        if qid in base_q:
+            for tag in dict.fromkeys(after.tags):
+                by_tag.setdefault(tag, []).append(qid)
+    slices = []
+    for tag, ids in by_tag.items():
+        before = statistics.fmean(base_q[i].metrics[hit] for i in ids)
+        after = statistics.fmean(cand_q[i].metrics[hit] for i in ids)
+        slices.append(
+            SliceDelta(
+                tag=tag,
+                questions=len(ids),
+                baseline=before,
+                candidate=after,
+                delta=after - before,
+            )
+        )
+    return sorted(slices, key=lambda s: (s.delta, s.tag))
 
 
 def compare_runs(
@@ -149,6 +190,7 @@ def compare_runs(
         newly_passing=newly_passing,
         newly_erroring=newly_erroring,
         flaky=[q.id for q in candidate.questions if 0.0 < q.metrics[hit] < 1.0],
+        slices=_tag_slices(base_q, cand_q, hit),
         only_in_baseline=sorted(set(base_q) - set(cand_q)),
         only_in_candidate=sorted(set(cand_q) - set(base_q)),
         warnings=warnings,
@@ -175,5 +217,12 @@ def format_summary(result: Comparison) -> str:
     ):
         if ids:
             lines.append(f"  {label}: {', '.join(ids)}")
+    if result.slices:
+        lines.append(f"  by tag ({result.hit_metric}, not gated):")
+        lines.extend(
+            f"    {s.tag}: {s.baseline:.3f} -> {s.candidate:.3f} "
+            f"({s.delta:+.3f}, {s.questions} questions)"
+            for s in result.slices
+        )
     lines.extend(f"  warning: {w}" for w in result.warnings)
     return "\n".join(lines)

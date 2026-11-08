@@ -69,6 +69,20 @@ def render_markdown(result: Comparison, *, title: str = "rag-regress") -> str:
             "",
         ]
 
+    if result.slices:
+        lines += [
+            f"**By tag** ({result.hit_metric}, informational, not gated)",
+            "",
+            "| Tag | Questions | Baseline | Candidate | Δ |",
+            "|---|---:|---:|---:|---:|",
+        ]
+        lines += [
+            f"| `{s.tag}` | {s.questions} | {_fmt(s.baseline)} "
+            f"| {_fmt(s.candidate)} | {s.delta:+.3f} |"
+            for s in result.slices
+        ]
+        lines.append("")
+
     lines += _question_list(
         f"Newly failing ({result.hit_metric})", result.newly_failing
     )
