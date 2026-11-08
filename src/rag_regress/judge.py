@@ -24,7 +24,10 @@ import os
 import re
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    import httpx
 
 # The cache key includes the full prompt text, so editing a prompt below
 # invalidates its cached replies automatically.
@@ -68,7 +71,7 @@ class OpenAICompatibleClient:
         api_key: str,
         base_url: str = "https://api.openai.com/v1",
         timeout: float = 60.0,
-        transport: object | None = None,
+        transport: httpx.BaseTransport | None = None,
     ) -> None:
         import httpx  # optional dependency: pip install "rag-regress[judge]"
 
