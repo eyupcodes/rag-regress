@@ -83,12 +83,20 @@ runs:
         REPORT: ${{ steps.compare.outputs.report }}
       run: |
         marker='<!-- rag-regress-report -->'
-        existing=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
-          --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -n 1)
-        if [ -n "$existing" ]; then
-          gh api --method PATCH "repos/$REPO/issues/comments/$existing" -F "body=@$REPORT" > /dev/null
-        else
-          gh api --method POST "repos/$REPO/issues/$PR/comments" -F "body=@$REPORT" > /dev/null
+        post_comment() {
+          local existing
+          existing=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -n 1) || return 1
+          if [ -n "$existing" ]; then
+            gh api --method PATCH "repos/$REPO/issues/comments/$existing" -F "body=@$REPORT" > /dev/null
+          else
+            gh api --method POST "repos/$REPO/issues/$PR/comments" -F "body=@$REPORT" > /dev/null
+          fi
+        }
+        # The comment is a convenience (the report is also in the job summary), so a
+        # read-only token, as on fork pull requests, must not decide the result.
+        if ! post_comment; then
+          echo "::warning title=rag-regress::Could not post the report comment (is the token allowed to write pull requests? fork pull requests get a read-only token). The report is in the job summary."
         fi
 
     - name: Fail on regression

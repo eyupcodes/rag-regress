@@ -116,7 +116,7 @@ jobs:
           compare-args: --metric hit@5 --metric recall@5 --tolerance 0.03
 ```
 
-The action runs the golden set and compares the result with the committed baseline. It writes the report to the job summary and keeps a single comment on the pull request up to date, and it fails the job when quality drops. Set `comment: "false"` to skip the comment. Outputs: `passed` and `report`. This repository runs the action on its own example in CI, once on the healthy pipeline (it must pass) and once on a broken one (it must fail).
+The action runs the golden set and compares the result with the committed baseline. It writes the report to the job summary and keeps a single comment on the pull request up to date, and it fails the job when quality drops. Set `comment: "false"` to skip the comment. If the comment cannot be posted (for example on pull requests from forks, where the token is read-only), the action only emits a warning; the report stays in the job summary and the gate result is unchanged. Outputs: `passed` and `report`. This repository runs the action on its own example in CI, once on the healthy pipeline (it must pass) and once on a broken one (it must fail).
 
 To accept a change in quality deliberately, regenerate the baseline locally with `rag-regress run ... --out eval/baseline.json` and commit it, so the change is visible in review.
 
