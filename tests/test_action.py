@@ -4,8 +4,16 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import textwrap
 from pathlib import Path
+
+import pytest
+
+# The step runs under bash on Linux and macOS runners and needs a POSIX fake ``gh``.
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32", reason="the step script is tested with POSIX shell tools"
+)
 
 ACTION = Path(__file__).resolve().parent.parent / "action.yml"
 
