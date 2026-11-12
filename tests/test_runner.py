@@ -205,3 +205,28 @@ def test_cli_run_reports_unreadable_golden_set_with_exit_code_2(
     assert result.exit_code == 2
     assert "error:" in result.output
     assert "cannot read" in result.output
+
+
+def test_cli_run_checks_out_before_calling_the_pipeline(
+    tmp_path: Path, monkeypatch
+) -> None:
+    (tmp_path / "my_rag.py").write_text(
+        "def search(query):\n    raise SystemExit('pipeline was called')\n",
+        encoding="utf-8",
+    )
+    golden = tmp_path / "golden.jsonl"
+    golden.write_text(json.dumps(ITEMS[0].model_dump()), encoding="utf-8")
+    blocker = tmp_path / "file.txt"
+    blocker.write_text("x", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    for out in (tmp_path, blocker / "run.json"):
+        result = CliRunner().invoke(
+            app,
+            ["run", "--golden", str(golden), "--pipeline", "my_rag:search"]
+            + ["--out", str(out)],
+        )
+        assert result.exit_code == 2, result.output
+        assert "cannot write" in result.output
+        assert "Traceback" not in result.output
+    assert blocker.read_text(encoding="utf-8") == "x"
