@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `rag-regress run --out` is checked before the pipeline runs, and `run`/`compare` report an unwritable `--out`, `--report-md`, `--report-json` or baseline as `error: cannot write ...` with exit code 2 instead of a traceback after the work is done (#41).
 - The GitHub Action no longer fails the job when the pull request comment cannot be posted, for example on fork pull requests with a read-only token; it emits a warning and the report stays in the job summary (#39).
 - Tag slices count a question once even if it lists the same tag twice (#35).
 - Golden set files and run files with a UTF-8 BOM (Excel, Windows editors) now load instead of failing as invalid JSON (#31).

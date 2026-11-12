@@ -7,8 +7,11 @@ gates a candidate run against a baseline. Exit codes: 0 pass, 1 regression,
 
 from __future__ import annotations
 
+import os
 import shutil
 import sys
+from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import Annotated
 
@@ -29,6 +32,39 @@ from .runner import (
 )
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
+
+
+def _check_writable(path: Path) -> None:
+    """Exit 2 before any work if ``path`` cannot be written.
+
+    Missing parent directories are fine (they get created); nothing is created
+    or truncated here, so a failed run leaves an existing file alone.
+    """
+    reason = None
+    if path.is_dir():
+        reason = "is a directory"
+    else:
+        anchor = path.absolute().parent
+        while not anchor.exists() and anchor != anchor.parent:
+            anchor = anchor.parent
+        target = path.absolute() if path.exists() else anchor
+        if not anchor.is_dir():
+            reason = f"{anchor} is not a directory"
+        elif not os.access(target, os.W_OK):
+            reason = "permission denied"
+    if reason:
+        typer.echo(f"error: cannot write {path}: {reason}", err=True)
+        raise typer.Exit(2)
+
+
+def _write(path: Path, write: Callable[[], object]) -> None:
+    """Run ``write`` and turn an OSError into the documented exit code 2."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write()
+    except OSError as exc:
+        typer.echo(f"error: cannot write {path}: {exc.strerror or exc}", err=True)
+        raise typer.Exit(2) from None
 
 
 @app.callback()
@@ -67,6 +103,7 @@ def run(
     """Run PIPELINE on every golden question and write a run file."""
     # Resolve 'module:function' against the project being tested.
     sys.path.insert(0, str(Path.cwd()))
+    _check_writable(out)
     try:
         items = load_golden_set(golden)
         fn = load_pipeline(pipeline)
@@ -87,8 +124,7 @@ def run(
         golden_sha256=file_sha256(golden),
         judge=judge,
     )
-    out.parent.mkdir(parents=True, exist_ok=True)
-    result.save(out)
+    _write(out, lambda: result.save(out))
 
     headline = [
         m for m in ("hit@5", "recall@5", "mrr@10", "token_f1") if m in result.aggregates
@@ -140,6 +176,9 @@ def compare(
     ] = None,
 ) -> None:
     """Fail (exit 1) if CANDIDATE is worse than BASELINE beyond tolerance."""
+    for path in (report_md, report_json):
+        if path is not None:
+            _check_writable(path)
     try:
         base, cand = RunResult.load(baseline), RunResult.load(candidate)
         result = compare_runs(
@@ -156,12 +195,11 @@ def compare(
     typer.echo(format_summary(result))
     for path, render in ((report_md, render_markdown), (report_json, render_json)):
         if path is not None:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(render(result), encoding="utf-8")
+            _write(path, partial(path.write_text, render(result), encoding="utf-8"))
     if not result.passed:
         if update_baseline:
             typer.echo("baseline not updated: the candidate regressed")
         raise typer.Exit(1)
     if update_baseline:
-        shutil.copyfile(candidate, baseline)
+        _write(baseline, lambda: shutil.copyfile(candidate, baseline))
         typer.echo(f"updated {baseline}")

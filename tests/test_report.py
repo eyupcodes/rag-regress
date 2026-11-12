@@ -124,3 +124,21 @@ def test_markdown_and_json_include_tag_slices() -> None:
 
 def test_markdown_without_slices_has_no_tag_section() -> None:
     assert "By tag" not in render_markdown(comparison())
+
+
+def test_cli_compare_rejects_unwritable_report_path(tmp_path: Path) -> None:
+    from tests.test_compare import ALL_RIGHT, make_run
+
+    base, cand = tmp_path / "b.json", tmp_path / "c.json"
+    make_run(ALL_RIGHT).save(base)
+    make_run(ALL_RIGHT).save(cand)
+
+    result = CliRunner().invoke(
+        app,
+        ["compare", "--baseline", str(base), "--candidate", str(cand)]
+        + ["--report-md", str(tmp_path)],
+    )
+
+    assert result.exit_code == 2, result.output
+    assert "cannot write" in result.output
+    assert "Traceback" not in result.output
