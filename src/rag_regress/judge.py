@@ -93,7 +93,15 @@ class OpenAICompatibleClient:
             },
         )
         response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"]
+        try:
+            content = response.json()["choices"][0]["message"]["content"]
+        except (ValueError, LookupError, TypeError):
+            content = None
+        if not isinstance(content, str):
+            raise JudgeError(
+                f"judge {self.model!r} returned no completion: {response.text[:200]}"
+            )
+        return content
 
 
 class JudgeCache:

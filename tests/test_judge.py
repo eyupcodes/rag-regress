@@ -188,3 +188,23 @@ def test_cli_without_api_key_is_a_usage_error(tmp_path: Path, monkeypatch) -> No
 
     assert result.exit_code == 2
     assert "API_KEY" in result.output
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        {"choices": []},
+        {"choices": [{"message": {"content": None}}]},
+        {"choices": [{"message": {"content": ["parts"]}}]},
+        {"error": {"message": "overloaded"}},
+    ],
+)
+def test_openai_compatible_client_rejects_malformed_reply(reply: dict) -> None:
+    client = OpenAICompatibleClient(
+        "judge-1",
+        api_key="k",
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json=reply)),
+    )
+
+    with pytest.raises(JudgeError, match="no completion"):
+        client.complete("hello")
