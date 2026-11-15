@@ -7,8 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `mypy` runs in strict mode (#43).
+
 ### Fixed
 
+- A judge reply without a completion (empty `choices`, `null` or non-string content, error object) raises `JudgeError` instead of `KeyError`/`TypeError`, so the question is reported as a judge failure (#43).
 - `rag-regress run --out` is checked before the pipeline runs, and `run`/`compare` report an unwritable `--out`, `--report-md`, `--report-json` or baseline as `error: cannot write ...` with exit code 2 instead of a traceback after the work is done (#41).
 - The GitHub Action no longer fails the job when the pull request comment cannot be posted, for example on fork pull requests with a read-only token; it emits a warning and the report stays in the job summary (#39).
 - Tag slices count a question once even if it lists the same tag twice (#35).
