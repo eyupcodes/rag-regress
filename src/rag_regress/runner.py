@@ -21,7 +21,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel, ValidationError
 
@@ -91,7 +91,7 @@ def load_pipeline(reference: str) -> Pipeline:
         target = getattr(target, part)
     if not callable(target):
         raise PipelineLoadError(f"{reference!r}: {attr} is not callable")
-    return target
+    return cast(Pipeline, target)
 
 
 def _parse_output(output: Any) -> tuple[list[str], str | None]:
