@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Dependabot proposes monthly, grouped updates for GitHub Actions and pip dependencies (#45).
 - `mypy` runs in strict mode (#43).
 
 ### Fixed
