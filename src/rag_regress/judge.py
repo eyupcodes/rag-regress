@@ -97,6 +97,14 @@ class OpenAICompatibleClient:
             content = response.json()["choices"][0]["message"]["content"]
         except (ValueError, LookupError, TypeError):
             content = None
+        if isinstance(content, list):
+            # Some servers return typed parts: [{"type": "text", "text": "..."}].
+            parts = [
+                part["text"]
+                for part in content
+                if isinstance(part, dict) and isinstance(part.get("text"), str)
+            ]
+            content = "".join(parts) if parts else None
         if not isinstance(content, str):
             raise JudgeError(
                 f"judge {self.model!r} returned no completion: {response.text[:200]}"
