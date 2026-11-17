@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The OpenAI-compatible judge client joins `message.content` returned as typed text parts (`[{"type": "text", "text": ...}]`) instead of rejecting a valid verdict as "no completion" (#47).
+
 ### Changed
 
 - Dependabot proposes monthly, grouped updates for GitHub Actions and pip dependencies (#45).
