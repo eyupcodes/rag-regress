@@ -4,7 +4,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from rag_regress.cli import app
-from rag_regress.compare import Comparison, MetricDelta, SliceDelta
+from rag_regress.compare import Comparison, LatencyDelta, MetricDelta, SliceDelta
 from rag_regress.report import MARKER, render_json, render_markdown
 
 
@@ -142,3 +142,33 @@ def test_cli_compare_rejects_unwritable_report_path(tmp_path: Path) -> None:
     assert result.exit_code == 2, result.output
     assert "cannot write" in result.output
     assert "Traceback" not in result.output
+
+
+def test_markdown_and_json_include_latency() -> None:
+    latency = LatencyDelta(
+        baseline_p50_ms=10.0,
+        candidate_p50_ms=12.0,
+        baseline_p95_ms=20.0,
+        candidate_p95_ms=40.0,
+        max_increase=0.5,
+        regressed=True,
+    )
+    result = comparison(passed=False, latency=latency)
+
+    md = render_markdown(result)
+    assert "**Latency** (p95 limit +50%)" in md
+    assert "| p95 | 20.0 ms | 40.0 ms | ❌ |" in md
+    assert "regression** in p95 latency" in md
+    assert json.loads(render_json(result))["latency"]["regressed"] is True
+
+
+def test_markdown_latency_is_informational_without_a_limit() -> None:
+    latency = LatencyDelta(
+        baseline_p50_ms=1.0,
+        candidate_p50_ms=1.0,
+        baseline_p95_ms=2.0,
+        candidate_p95_ms=2.0,
+    )
+    assert "**Latency** (informational, not gated)" in render_markdown(
+        comparison(latency=latency)
+    )

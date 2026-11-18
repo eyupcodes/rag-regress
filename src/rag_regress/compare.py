@@ -51,6 +51,17 @@ class SliceDelta(BaseModel):
     delta: float
 
 
+class LatencyDelta(BaseModel):
+    """p50/p95 latency of both runs; gated only when a limit is given."""
+
+    baseline_p50_ms: float
+    candidate_p50_ms: float
+    baseline_p95_ms: float
+    candidate_p95_ms: float
+    max_increase: float | None = None
+    regressed: bool = False
+
+
 class Comparison(BaseModel):
     passed: bool
     hit_metric: str
@@ -60,6 +71,7 @@ class Comparison(BaseModel):
     newly_erroring: list[str]
     flaky: list[str] = []
     slices: list[SliceDelta] = []
+    latency: LatencyDelta | None = None
     only_in_baseline: list[str]
     only_in_candidate: list[str]
     warnings: list[str]
@@ -113,7 +125,10 @@ def compare_runs(
     tolerance: float = DEFAULT_TOLERANCE,
     tolerances: Mapping[str, float] | None = None,
     gate: Iterable[str] | None = None,
+    max_latency_increase: float | None = None,
 ) -> Comparison:
+    if max_latency_increase is not None and not max_latency_increase >= 0:
+        raise ValueError("max latency increase must be a number >= 0")
     given = [tolerance, *(tolerances or {}).values()]
     if any(math.isnan(t) for t in given):
         # NaN compares false with everything, which would switch the gate off.
@@ -182,8 +197,25 @@ def compare_runs(
             "the golden set changed between the runs; averages may not be comparable"
         )
 
+    latency = LatencyDelta(
+        baseline_p50_ms=baseline.latency_ms_p50,
+        candidate_p50_ms=candidate.latency_ms_p50,
+        baseline_p95_ms=baseline.latency_ms_p95,
+        candidate_p95_ms=candidate.latency_ms_p95,
+        max_increase=max_latency_increase,
+    )
+    if max_latency_increase is not None:
+        if baseline.latency_ms_p95 <= 0:
+            warnings.append(
+                "baseline p95 latency is 0, so --max-latency-increase was not applied"
+            )
+        else:
+            latency.regressed = candidate.latency_ms_p95 > baseline.latency_ms_p95 * (
+                1 + max_latency_increase
+            )
+
     return Comparison(
-        passed=not any(d.regressed for d in deltas),
+        passed=not any(d.regressed for d in deltas) and not latency.regressed,
         hit_metric=hit,
         metrics=deltas,
         newly_failing=newly_failing,
@@ -191,6 +223,7 @@ def compare_runs(
         newly_erroring=newly_erroring,
         flaky=[q.id for q in candidate.questions if 0.0 < q.metrics[hit] < 1.0],
         slices=_tag_slices(base_q, cand_q, hit),
+        latency=latency,
         only_in_baseline=sorted(set(base_q) - set(cand_q)),
         only_in_candidate=sorted(set(cand_q) - set(base_q)),
         warnings=warnings,
@@ -206,6 +239,19 @@ def format_summary(result: Comparison) -> str:
         lines.append(
             f"  {m.name}: {m.baseline:.3f} -> {m.candidate:.3f} "
             f"({m.delta:+.3f}, tolerance {m.tolerance:.3f})"
+        )
+    lat = result.latency
+    if lat is not None and lat.max_increase is not None:
+        change = (
+            f" ({lat.candidate_p95_ms / lat.baseline_p95_ms - 1:+.0%})"
+            if lat.baseline_p95_ms > 0
+            else ""
+        )
+        gate = f" REGRESSED (limit +{lat.max_increase:.0%})" if lat.regressed else ""
+        lines.append(
+            f"  latency p95: {lat.baseline_p95_ms:.1f}ms -> "
+            f"{lat.candidate_p95_ms:.1f}ms{change}{gate}; "
+            f"p50: {lat.baseline_p50_ms:.1f}ms -> {lat.candidate_p50_ms:.1f}ms"
         )
     for label, ids in (
         (f"newly failing ({result.hit_metric})", result.newly_failing),
