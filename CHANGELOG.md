@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `compare` reports the p50/p95 latency of both runs in `--report-md` and `--report-json` (`latency`), and `--max-latency-increase RATIO` fails the comparison when p95 latency grows by more than that ratio; it is off by default (#49).
 - `compare` reports hit-rate slices per golden-set tag (CLI summary, `--report-md`, `--report-json`), worst drop first; they are informational and do not gate (#33).
 
 - Golden set loader for JSONL files with per-line validation (#1).

@@ -162,6 +162,12 @@ def compare(
         list[str] | None,
         typer.Option(help="Gate only these metrics; repeatable. Default: all."),
     ] = None,
+    max_latency_increase: Annotated[
+        float | None,
+        typer.Option(
+            help="Also fail if p95 latency grows by more than this ratio, e.g. 0.5."
+        ),
+    ] = None,
     update_baseline: Annotated[
         bool,
         typer.Option(
@@ -187,6 +193,7 @@ def compare(
             tolerance=tolerance,
             tolerances=_parse_overrides(tolerance_for or []),
             gate=metric,
+            max_latency_increase=max_latency_increase,
         )
     except (OSError, ValidationError, ValueError) as exc:
         typer.echo(f"error: {exc}", err=True)

@@ -41,8 +41,10 @@ def render_markdown(result: Comparison, *, title: str = "rag-regress") -> str:
     if result.passed:
         verdict = f"✅ **{title}: pass**. No gated metric dropped beyond its tolerance."
     else:
-        names = ", ".join(f"`{m.name}`" for m in regressed)
-        verdict = f"❌ **{title}: regression** in {names}."
+        names = [f"`{m.name}`" for m in regressed]
+        if result.latency is not None and result.latency.regressed:
+            names.append("p95 latency")
+        verdict = f"❌ **{title}: regression** in {', '.join(names)}."
 
     lines = [MARKER, verdict, ""]
     lines += [f"> ⚠️ {w}" for w in result.warnings]
@@ -66,6 +68,24 @@ def render_markdown(result: Comparison, *, title: str = "rag-regress") -> str:
         lines += [
             "Tolerances widen to two standard errors of run-to-run noise "
             "where that is larger.",
+            "",
+        ]
+
+    lat = result.latency
+    if lat is not None:
+        if lat.max_increase is None:
+            note = "informational, not gated"
+        else:
+            note = f"p95 limit +{lat.max_increase:.0%}"
+        status = "❌" if lat.regressed else ""
+        lines += [
+            f"**Latency** ({note})",
+            "",
+            "| Percentile | Baseline | Candidate | |",
+            "|---|---:|---:|:-:|",
+            f"| p50 | {lat.baseline_p50_ms:.1f} ms | {lat.candidate_p50_ms:.1f} ms | |",
+            f"| p95 | {lat.baseline_p95_ms:.1f} ms | {lat.candidate_p95_ms:.1f} ms "
+            f"| {status} |",
             "",
         ]
 

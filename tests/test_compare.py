@@ -159,6 +159,27 @@ def test_cli_exit_codes_and_update_baseline(tmp_path: Path) -> None:
     assert gated.exit_code == 1
 
 
+def test_cli_max_latency_increase_gates_exit_code(tmp_path: Path) -> None:
+    base = save(_with_latency(make_run(ALL_RIGHT), 10.0, 20.0), tmp_path / "b.json")
+    slow = save(_with_latency(make_run(ALL_RIGHT), 10.0, 90.0), tmp_path / "s.json")
+
+    assert invoke("--baseline", str(base), "--candidate", str(slow)).exit_code == 0
+    gated = invoke(
+        "--baseline", str(base), "--candidate", str(slow), "--max-latency-increase", "1"
+    )
+    assert gated.exit_code == 1
+    assert "latency p95" in gated.output
+    bad = invoke(
+        "--baseline",
+        str(base),
+        "--candidate",
+        str(base),
+        "--max-latency-increase",
+        "-1",
+    )
+    assert bad.exit_code == 2
+
+
 @pytest.mark.parametrize(
     "extra",
     [
@@ -309,3 +330,60 @@ def test_a_repeated_tag_counts_the_question_once() -> None:
     (billing,) = result.slices
     assert billing.questions == 2
     assert billing.candidate == 0.5
+
+
+def _with_latency(run: RunResult, p50: float, p95: float) -> RunResult:
+    return run.model_copy(update={"latency_ms_p50": p50, "latency_ms_p95": p95})
+
+
+def test_latency_is_reported_but_not_gated_by_default() -> None:
+    base = _with_latency(make_run(ALL_RIGHT), 10.0, 20.0)
+    slow = _with_latency(make_run(ALL_RIGHT), 100.0, 400.0)
+
+    result = compare_runs(base, slow)
+
+    assert result.passed
+    assert result.latency is not None
+    assert result.latency.candidate_p95_ms == 400.0
+    assert result.latency.max_increase is None
+    assert "latency" not in format_summary(result)
+
+
+def test_max_latency_increase_fails_a_slower_candidate() -> None:
+    base = _with_latency(make_run(ALL_RIGHT), 10.0, 20.0)
+    slow = _with_latency(make_run(ALL_RIGHT), 12.0, 31.0)
+
+    result = compare_runs(base, slow, max_latency_increase=0.5)
+
+    assert not result.passed
+    assert result.latency is not None and result.latency.regressed
+    summary = format_summary(result)
+    assert "FAIL" in summary
+    assert "latency p95: 20.0ms -> 31.0ms (+55%) REGRESSED (limit +50%)" in summary
+
+
+def test_max_latency_increase_allows_growth_within_the_limit() -> None:
+    base = _with_latency(make_run(ALL_RIGHT), 10.0, 20.0)
+    candidate = _with_latency(make_run(ALL_RIGHT), 10.0, 30.0)
+
+    result = compare_runs(base, candidate, max_latency_increase=0.5)
+
+    assert result.passed
+    assert "latency p95: 20.0ms -> 30.0ms (+50%); p50" in format_summary(result)
+
+
+def test_max_latency_increase_is_skipped_for_a_zero_baseline() -> None:
+    base = _with_latency(make_run(ALL_RIGHT), 0.0, 0.0)
+    candidate = _with_latency(make_run(ALL_RIGHT), 5.0, 9.0)
+
+    result = compare_runs(base, candidate, max_latency_increase=0.1)
+
+    assert result.passed
+    assert any("--max-latency-increase was not applied" in w for w in result.warnings)
+
+
+@pytest.mark.parametrize("bad", [-0.1, float("nan")])
+def test_max_latency_increase_rejects_invalid_values(bad: float) -> None:
+    run = make_run(ALL_RIGHT)
+    with pytest.raises(ValueError, match="max latency increase"):
+        compare_runs(run, run, max_latency_increase=bad)

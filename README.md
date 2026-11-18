@@ -56,9 +56,12 @@ FAIL: quality regressed
 | `--tolerance 0.02` | Allowed absolute drop for every metric |
 | `--tolerance-for recall@5=0.05` | Per-metric override, repeatable |
 | `--metric hit@5` | Gate only these metrics (default: every metric in both runs) |
+| `--max-latency-increase 0.5` | Also fail if the candidate's p95 latency is more than 50% above the baseline's (off by default; latency depends on the machine) |
 | `--update-baseline` | Overwrite the baseline with the candidate, but only if nothing regressed |
 
 Add `--report-md report.md` to get a short Markdown report for a pull request comment: the verdict, a metric table with regressions on top, and the questions that changed. `--report-json report.json` writes the same comparison for other tools.
+
+`--report-md` and `--report-json` always include the p50/p95 latency of both runs; the terminal summary shows it when `--max-latency-increase` is set. A baseline with a p95 of 0 cannot define a ratio, so the gate is skipped with a warning.
 
 If your golden questions carry `tags`, `compare` also prints a **by tag** section: the `hit@K` rate of each tag in both runs, worst drop first, so a regression confined to one topic is visible even when the overall average barely moves. Slices are informational; they never change the exit code. They are included in `--report-md` and `--report-json` (`slices`).
 
