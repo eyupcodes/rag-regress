@@ -230,3 +230,43 @@ def test_cli_run_checks_out_before_calling_the_pipeline(
         assert "cannot write" in result.output
         assert "Traceback" not in result.output
     assert blocker.read_text(encoding="utf-8") == "x"
+
+
+def test_load_pipeline_reports_a_module_that_fails_on_import(
+    tmp_path: Path, monkeypatch
+) -> None:
+    (tmp_path / "broken_rag.py").write_text("raise RuntimeError('no index')\n")
+    (tmp_path / "syntax_rag.py").write_text("def search(\n")
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    with pytest.raises(PipelineLoadError, match="RuntimeError: no index"):
+        load_pipeline("broken_rag:search")
+    with pytest.raises(PipelineLoadError, match="SyntaxError"):
+        load_pipeline("syntax_rag:search")
+
+
+def test_cli_run_exits_2_when_the_pipeline_module_fails_on_import(
+    tmp_path: Path, monkeypatch
+) -> None:
+    (tmp_path / "broken_cli_rag.py").write_text("raise RuntimeError('no index')\n")
+    golden = tmp_path / "golden.jsonl"
+    golden.write_text('{"id": "q1", "query": "x", "relevant_ids": ["a"]}\n')
+    monkeypatch.chdir(tmp_path)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "run",
+            "--golden",
+            str(golden),
+            "--pipeline",
+            "broken_cli_rag:search",
+            "--out",
+            str(tmp_path / "run.json"),
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert "error:" in result.output
+    assert "RuntimeError: no index" in result.output
+    assert "Traceback" not in result.output

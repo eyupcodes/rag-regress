@@ -84,6 +84,9 @@ def load_pipeline(reference: str) -> Pipeline:
     except ImportError as exc:
         msg = f"{reference!r}: cannot import {module_name}: {exc}"
         raise PipelineLoadError(msg) from None
+    except Exception as exc:  # module-level user code can fail in any way
+        msg = f"{reference!r}: importing {module_name} failed: "
+        raise PipelineLoadError(f"{msg}{type(exc).__name__}: {exc}") from None
     target: Any = module
     for part in attr.split("."):
         if not hasattr(target, part):
