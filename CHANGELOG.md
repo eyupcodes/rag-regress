@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `rag-regress run` reports a pipeline module that raises while importing (a `SyntaxError`, a failing module-level statement) as `error: ...` with exit code 2 instead of a traceback with exit code 1, which CI reads as a regression (#51).
 - The OpenAI-compatible judge client joins `message.content` returned as typed text parts (`[{"type": "text", "text": ...}]`) instead of rejecting a valid verdict as "no completion" (#47).
 
 ### Changed
