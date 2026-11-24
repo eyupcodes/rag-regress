@@ -226,3 +226,111 @@ def test_openai_compatible_client_joins_typed_content_parts() -> None:
     )
 
     assert client.complete("hello") == '{"score": 1}'
+
+
+def _retry_client(
+    handler: object, slept: list[float], **kwargs: object
+) -> OpenAICompatibleClient:
+    return OpenAICompatibleClient(
+        "judge-1",
+        api_key="k",
+        transport=httpx.MockTransport(handler),  # type: ignore[arg-type]
+        sleep=slept.append,
+        **kwargs,  # type: ignore[arg-type]
+    )
+
+
+_OK = {"choices": [{"message": {"content": '{"score": 1}'}}]}
+
+
+def test_client_retries_rate_limit_then_succeeds() -> None:
+    replies = [httpx.Response(429), httpx.Response(503), httpx.Response(200, json=_OK)]
+    slept: list[float] = []
+    client = _retry_client(lambda request: replies.pop(0), slept)
+
+    assert client.complete("hello") == '{"score": 1}'
+    assert slept == [1.0, 2.0]
+
+
+def test_client_honours_retry_after_and_caps_it() -> None:
+    replies = [
+        httpx.Response(429, headers={"Retry-After": "7"}),
+        httpx.Response(429, headers={"Retry-After": "900"}),
+        httpx.Response(200, json=_OK),
+    ]
+    slept: list[float] = []
+    client = _retry_client(lambda request: replies.pop(0), slept, max_retries=2)
+
+    client.complete("hello")
+    assert slept == [7.0, 30.0]
+
+
+@pytest.mark.parametrize("header", ["soon", "-3", "nan", "inf"])
+def test_client_ignores_unusable_retry_after(header: str) -> None:
+    replies = [httpx.Response(429, headers={"Retry-After": header})]
+    replies.append(httpx.Response(200, json=_OK))
+    slept: list[float] = []
+    client = _retry_client(lambda request: replies.pop(0), slept)
+
+    client.complete("hello")
+    assert slept == [1.0]
+
+
+def test_client_gives_up_after_max_retries_with_server_message() -> None:
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(503, text="model overloaded")
+
+    slept: list[float] = []
+    client = _retry_client(handler, slept, max_retries=2)
+
+    with pytest.raises(JudgeError, match="HTTP 503: model overloaded"):
+        client.complete("hello")
+    assert len(calls) == 3
+    assert len(slept) == 2
+
+
+def test_client_does_not_retry_client_errors() -> None:
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(401, json={"error": {"message": "bad key"}})
+
+    slept: list[float] = []
+    client = _retry_client(handler, slept)
+
+    with pytest.raises(JudgeError, match="HTTP 401"):
+        client.complete("hello")
+    assert len(calls) == 1
+    assert slept == []
+
+
+def test_client_retries_connection_errors() -> None:
+    attempts: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise httpx.ConnectError("boom")
+        return httpx.Response(200, json=_OK)
+
+    slept: list[float] = []
+    client = _retry_client(handler, slept)
+
+    assert client.complete("hello") == '{"score": 1}'
+    assert slept == [1.0]
+
+
+def test_client_reraises_connection_error_when_retries_run_out() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("down")
+
+    slept: list[float] = []
+    client = _retry_client(handler, slept, max_retries=1)
+
+    with pytest.raises(httpx.ConnectError):
+        client.complete("hello")
+    assert len(slept) == 1

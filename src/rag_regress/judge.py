@@ -20,14 +20,19 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
-from collections.abc import Sequence
+import time
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     import httpx
+
+# Statuses that usually clear up on their own: rate limiting and server hiccups.
+RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 
 # The cache key includes the full prompt text, so editing a prompt below
 # invalidates its cached replies automatically.
@@ -72,10 +77,18 @@ class OpenAICompatibleClient:
         base_url: str = "https://api.openai.com/v1",
         timeout: float = 60.0,
         transport: httpx.BaseTransport | None = None,
+        max_retries: int = 2,
+        backoff: float = 1.0,
+        max_retry_delay: float = 30.0,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         import httpx  # optional dependency: pip install "rag-regress[judge]"
 
         self.model = model
+        self.max_retries = max(0, max_retries)
+        self.backoff = backoff
+        self.max_retry_delay = max_retry_delay
+        self._sleep = sleep
         self._http = httpx.Client(
             base_url=base_url.rstrip("/"),
             headers={"Authorization": f"Bearer {api_key}"},
@@ -83,16 +96,51 @@ class OpenAICompatibleClient:
             transport=transport,
         )
 
+    def _delay(self, attempt: int, response: httpx.Response | None) -> float:
+        """Seconds before the next try: ``Retry-After`` if numeric, else backoff."""
+        delay = self.backoff * 2.0**attempt
+        if response is not None:
+            try:
+                header = float(response.headers.get("Retry-After", ""))
+            except ValueError:
+                header = math.nan
+            if math.isfinite(header) and header >= 0:
+                delay = header
+        return min(delay, self.max_retry_delay)
+
+    def _post(self, prompt: str) -> httpx.Response:
+        """POST the prompt, retrying transient statuses and connection errors."""
+        import httpx
+
+        for attempt in range(self.max_retries + 1):
+            last_try = attempt == self.max_retries
+            try:
+                response = self._http.post(
+                    "/chat/completions",
+                    json={
+                        "model": self.model,
+                        "temperature": 0,
+                        "messages": [{"role": "user", "content": prompt}],
+                    },
+                )
+            except httpx.TransportError:
+                if last_try:
+                    raise
+                self._sleep(self._delay(attempt, None))
+                continue
+            if response.status_code in RETRY_STATUSES and not last_try:
+                self._sleep(self._delay(attempt, response))
+                continue
+            return response
+        raise AssertionError("unreachable")  # pragma: no cover
+
     def complete(self, prompt: str) -> str:
-        response = self._http.post(
-            "/chat/completions",
-            json={
-                "model": self.model,
-                "temperature": 0,
-                "messages": [{"role": "user", "content": prompt}],
-            },
-        )
-        response.raise_for_status()
+        response = self._post(prompt)
+        if response.is_error:
+            raise JudgeError(
+                f"judge {self.model!r} returned HTTP {response.status_code}: "
+                f"{response.text[:200]}"
+            )
         try:
             content = response.json()["choices"][0]["message"]["content"]
         except (ValueError, LookupError, TypeError):

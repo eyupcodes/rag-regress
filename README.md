@@ -89,7 +89,7 @@ rag-regress run ... --judge-model gpt-4.1-mini \
     [--judge-base-url https://your-openai-compatible-server/v1]
 ```
 
-This adds `judge_relevance` (does the answer address the question?) for every answered question. It also adds `judge_faithfulness` (are the answer's claims supported by the passages?) when your pipeline returns the passage texts as `contexts`. The judge must reply with strict JSON. A malformed reply is retried once; if it fails again, the question gets a `judge_error` and no judge score, never a silent zero.
+This adds `judge_relevance` (does the answer address the question?) for every answered question. It also adds `judge_faithfulness` (are the answer's claims supported by the passages?) when your pipeline returns the passage texts as `contexts`. The judge must reply with strict JSON. A malformed reply is retried once; if it fails again, the question gets a `judge_error` and no judge score, never a silent zero. Transient HTTP failures (`429`, `500`, `502`, `503`, `504`) and connection errors are retried twice with exponential backoff, honouring a numeric `Retry-After` of up to 30 seconds, before the question is given a `judge_error` that includes the server's message.
 
 Replies are cached in `.rag-regress-cache/judge.json` by model and prompt. Commit that file if you want CI to reuse the scores. Judge scores still move when you change the judge model, so keep the deterministic metrics as your gate, for example `--metric hit@5 --metric recall@5`, and read judge scores as a second opinion.
 
