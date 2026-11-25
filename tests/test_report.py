@@ -172,3 +172,75 @@ def test_markdown_latency_is_informational_without_a_limit() -> None:
     assert "**Latency** (informational, not gated)" in render_markdown(
         comparison(latency=latency)
     )
+
+
+def _compare_inputs(tmp_path: Path) -> tuple[Path, Path]:
+    from tests.test_compare import ALL_RIGHT, make_run
+
+    base, cand = tmp_path / "b.json", tmp_path / "c.json"
+    make_run(ALL_RIGHT).save(base)
+    make_run(ALL_RIGHT).save(cand)
+    return base, cand
+
+
+def test_cli_compare_refuses_report_that_is_the_candidate(tmp_path: Path) -> None:
+    base, cand = _compare_inputs(tmp_path)
+    before = cand.read_text(encoding="utf-8")
+
+    result = CliRunner().invoke(
+        app,
+        ["compare", "--baseline", str(base), "--candidate", str(cand)]
+        + ["--report-json", str(cand)],
+    )
+
+    assert result.exit_code == 2, result.output
+    assert "--report-json must not be the same file as --candidate" in result.output
+    assert cand.read_text(encoding="utf-8") == before
+
+
+def test_cli_compare_refuses_report_that_is_the_baseline_by_other_spelling(
+    tmp_path: Path,
+) -> None:
+    base, cand = _compare_inputs(tmp_path)
+    (tmp_path / "sub").mkdir()
+    respelled = tmp_path / "sub" / ".." / base.name
+    before = base.read_text(encoding="utf-8")
+
+    result = CliRunner().invoke(
+        app,
+        ["compare", "--baseline", str(base), "--candidate", str(cand)]
+        + ["--report-md", str(respelled)],
+    )
+
+    assert result.exit_code == 2, result.output
+    assert "must not be the same file as --baseline" in result.output
+    assert base.read_text(encoding="utf-8") == before
+
+
+def test_cli_compare_refuses_two_reports_at_one_path(tmp_path: Path) -> None:
+    base, cand = _compare_inputs(tmp_path)
+    report = tmp_path / "report.out"
+
+    result = CliRunner().invoke(
+        app,
+        ["compare", "--baseline", str(base), "--candidate", str(cand)]
+        + ["--report-md", str(report), "--report-json", str(report)],
+    )
+
+    assert result.exit_code == 2, result.output
+    assert "must not be the same file as --report-md" in result.output
+    assert not report.exists()
+
+
+def test_cli_run_refuses_out_that_is_the_golden_set(tmp_path: Path) -> None:
+    golden = tmp_path / "golden.jsonl"
+    golden.write_text('{"id": "q1"}\n', encoding="utf-8")
+
+    result = CliRunner().invoke(
+        app,
+        ["run", "--golden", str(golden), "--pipeline", "m:f", "--out", str(golden)],
+    )
+
+    assert result.exit_code == 2, result.output
+    assert "--out must not be the same file as --golden" in result.output
+    assert golden.read_text(encoding="utf-8") == '{"id": "q1"}\n'

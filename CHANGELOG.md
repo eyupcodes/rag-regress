@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `rag-regress compare` and `run` exit 2 before doing any work when `--report-md`, `--report-json` or `--out` is the same file as an input (`--baseline`, `--candidate`, `--golden`) or as another output, instead of overwriting it (#55).
 - `rag-regress run` reports a pipeline module that raises while importing (a `SyntaxError`, a failing module-level statement) as `error: ...` with exit code 2 instead of a traceback with exit code 1, which CI reads as a regression (#51).
 - The OpenAI-compatible judge client joins `message.content` returned as typed text parts (`[{"type": "text", "text": ...}]`) instead of rejecting a valid verdict as "no completion" (#47).
 

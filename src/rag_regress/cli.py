@@ -57,6 +57,29 @@ def _check_writable(path: Path) -> None:
         raise typer.Exit(2)
 
 
+def _same_file(first: Path, second: Path) -> bool:
+    if first.exists() and second.exists():
+        return os.path.samefile(first, second)
+    return first.absolute().resolve() == second.absolute().resolve()
+
+
+def _check_distinct(outputs: dict[str, Path], inputs: dict[str, Path]) -> None:
+    """Exit 2 if an output is the same file as an input or as another output.
+
+    Writing it would destroy the input (or one report would replace the other).
+    """
+    others = list(inputs.items())
+    for name, path in outputs.items():
+        for other_name, other in others:
+            if _same_file(path, other):
+                typer.echo(
+                    f"error: {name} must not be the same file as {other_name}: {path}",
+                    err=True,
+                )
+                raise typer.Exit(2)
+        others.append((name, path))
+
+
 def _write(path: Path, write: Callable[[], object]) -> None:
     """Run ``write`` and turn an OSError into the documented exit code 2."""
     try:
@@ -103,6 +126,7 @@ def run(
     """Run PIPELINE on every golden question and write a run file."""
     # Resolve 'module:function' against the project being tested.
     sys.path.insert(0, str(Path.cwd()))
+    _check_distinct({"--out": out}, {"--golden": golden})
     _check_writable(out)
     try:
         items = load_golden_set(golden)
@@ -182,6 +206,17 @@ def compare(
     ] = None,
 ) -> None:
     """Fail (exit 1) if CANDIDATE is worse than BASELINE beyond tolerance."""
+    _check_distinct(
+        {
+            name: path
+            for name, path in (
+                ("--report-md", report_md),
+                ("--report-json", report_json),
+            )
+            if path is not None
+        },
+        {"--baseline": baseline, "--candidate": candidate},
+    )
     for path in (report_md, report_json):
         if path is not None:
             _check_writable(path)
