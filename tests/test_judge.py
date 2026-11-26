@@ -1,4 +1,5 @@
 import json
+from datetime import UTC
 from pathlib import Path
 
 import httpx
@@ -263,6 +264,36 @@ def test_client_honours_retry_after_and_caps_it() -> None:
 
     client.complete("hello")
     assert slept == [7.0, 30.0]
+
+
+def test_client_honours_retry_after_http_date(monkeypatch) -> None:
+    from datetime import datetime, timedelta
+    from email.utils import format_datetime
+
+    when = datetime.now(UTC) + timedelta(seconds=20)
+    replies = [
+        httpx.Response(
+            429, headers={"Retry-After": format_datetime(when, usegmt=True)}
+        ),
+        httpx.Response(200, json=_OK),
+    ]
+    slept: list[float] = []
+    client = _retry_client(lambda request: replies.pop(0), slept)
+
+    client.complete("hello")
+    assert 15.0 <= slept[0] <= 20.0
+
+
+def test_client_treats_past_retry_after_date_as_no_wait() -> None:
+    replies = [
+        httpx.Response(429, headers={"Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT"}),
+        httpx.Response(200, json=_OK),
+    ]
+    slept: list[float] = []
+    client = _retry_client(lambda request: replies.pop(0), slept)
+
+    client.complete("hello")
+    assert slept == [0.0]
 
 
 @pytest.mark.parametrize("header", ["soon", "-3", "nan", "inf"])

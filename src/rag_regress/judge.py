@@ -25,6 +25,8 @@ import os
 import re
 import time
 from collections.abc import Callable, Sequence
+from datetime import UTC
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
@@ -66,6 +68,21 @@ class JudgeClient(Protocol):
     def complete(self, prompt: str) -> str: ...
 
 
+def _retry_after_seconds(value: str) -> float | None:
+    """Parse ``Retry-After`` (seconds or HTTP date); ``None`` if unusable."""
+    try:
+        seconds = float(value)
+    except ValueError:
+        try:
+            when = parsedate_to_datetime(value)
+        except (TypeError, ValueError, IndexError, OverflowError):
+            return None
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=UTC)
+        seconds = max(0.0, when.timestamp() - time.time())
+    return seconds if math.isfinite(seconds) and seconds >= 0 else None
+
+
 class OpenAICompatibleClient:
     """Chat completions over HTTP; works with OpenAI and compatible servers."""
 
@@ -97,14 +114,14 @@ class OpenAICompatibleClient:
         )
 
     def _delay(self, attempt: int, response: httpx.Response | None) -> float:
-        """Seconds before the next try: ``Retry-After`` if numeric, else backoff."""
+        """Seconds before the next try: ``Retry-After`` if usable, else backoff.
+
+        ``Retry-After`` is either a number of seconds or an HTTP date.
+        """
         delay = self.backoff * 2.0**attempt
         if response is not None:
-            try:
-                header = float(response.headers.get("Retry-After", ""))
-            except ValueError:
-                header = math.nan
-            if math.isfinite(header) and header >= 0:
+            header = _retry_after_seconds(response.headers.get("Retry-After", ""))
+            if header is not None:
                 delay = header
         return min(delay, self.max_retry_delay)
 
