@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -206,6 +207,40 @@ def test_cli_missing_or_invalid_run_file_exits_2(tmp_path: Path) -> None:
         == 2
     )
     assert invoke("--baseline", str(bad), "--candidate", str(bad)).exit_code == 2
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize(
+    "path",
+    [
+        ("aggregates", "hit@1"),
+        ("aggregate_samples", "hit@1", 0),
+        ("questions", 0, "metrics", "hit@1"),
+        ("questions", 0, "latency_ms"),
+        ("latency_ms_p95",),
+    ],
+)
+@pytest.mark.parametrize("role", ["--baseline", "--candidate"])
+def test_cli_rejects_non_finite_numbers_in_a_run_file(
+    tmp_path: Path, role: str, path: tuple[str | int, ...], value: float
+) -> None:
+    # NaN compares false with everything, so it would let a regression pass.
+    good = save(make_run(ALL_RIGHT), tmp_path / "good.json")
+    data = json.loads(good.read_text(encoding="utf-8"))
+    data.setdefault("aggregate_samples", {}).setdefault("hit@1", [1.0])
+    target = data
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+    broken = tmp_path / "broken.json"
+    broken.write_text(json.dumps(data), encoding="utf-8")
+    other = "--candidate" if role == "--baseline" else "--baseline"
+
+    result = invoke(role, str(broken), other, str(good))
+
+    assert result.exit_code == 2
+    assert f"{broken}: not a valid run file" in result.output
+    assert "finite" in result.output
 
 
 @pytest.mark.parametrize(
