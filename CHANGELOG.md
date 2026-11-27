@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `rag-regress compare` exits 2 with `not a valid run file` when a run file holds `NaN` or `Infinity`, instead of reporting PASS because every comparison with `NaN` is false (#59).
 - The judge client honours `Retry-After` given as an HTTP date (a past date means no extra wait), not only as seconds, so it no longer retries before the server asked (#57).
 - `rag-regress compare` and `run` exit 2 before doing any work when `--report-md`, `--report-json` or `--out` is the same file as an input (`--baseline`, `--candidate`, `--golden`) or as another output, instead of overwriting it (#55).
 - `rag-regress run` reports a pipeline module that raises while importing (a `SyntaxError`, a failing module-level statement) as `error: ...` with exit code 2 instead of a traceback with exit code 1, which CI reads as a regression (#51).
