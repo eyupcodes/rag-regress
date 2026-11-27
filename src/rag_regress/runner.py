@@ -21,9 +21,9 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Annotated, Any, cast
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from .golden import GoldenItem
 from .judge import Judge
@@ -31,16 +31,20 @@ from .metrics import DEFAULT_KS, metric_sort_key, question_metrics
 
 Pipeline = Callable[[str], Any]
 
+# ``NaN`` compares false with everything, so a non-finite number in a run file
+# would let ``compare`` pass a regression; reject it when the file is read.
+Finite = Annotated[float, Field(allow_inf_nan=False)]
+
 
 class QuestionResult(BaseModel):
     id: str
     tags: tuple[str, ...] = ()
     retrieved_ids: list[str]
     answer: str | None = None
-    latency_ms: float
+    latency_ms: Finite
     error: str | None = None
     judge_error: str | None = None
-    metrics: dict[str, float]
+    metrics: dict[str, Finite]
 
 
 class RunResult(BaseModel):
@@ -49,11 +53,11 @@ class RunResult(BaseModel):
     ks: list[int]
     repeats: int = 1
     questions: list[QuestionResult]
-    aggregates: dict[str, float]
-    aggregate_samples: dict[str, list[float]] = {}
+    aggregates: dict[str, Finite]
+    aggregate_samples: dict[str, list[Finite]] = {}
     errors: int
-    latency_ms_p50: float
-    latency_ms_p95: float
+    latency_ms_p50: Finite
+    latency_ms_p95: Finite
 
     def save(self, path: str | Path) -> None:
         Path(path).write_text(self.model_dump_json(indent=2) + "\n", encoding="utf-8")
