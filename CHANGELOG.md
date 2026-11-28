@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The package ships a PEP 561 `py.typed` marker, so type checkers in downstream projects use rag-regress's annotations (#61).
 - The OpenAI-compatible judge client retries `429`/`5xx` replies and connection errors twice with exponential backoff (honouring a numeric `Retry-After`, capped at 30 s) instead of dropping the question's judge scores on the first hiccup; an HTTP error now reports the server's message in `judge_error` (#53).
 
 ### Fixed
